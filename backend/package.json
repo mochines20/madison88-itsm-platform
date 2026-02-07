@@ -1,0 +1,60 @@
+{
+  "name": "madison88-itsm-backend",
+  "version": "1.0.0",
+  "description": "Madison88 IT Service Management Platform - Backend API",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "node src/app.js",
+    "dev": "nodemon src/app.js",
+    "test": "jest --coverage",
+    "test:watch": "jest --watch",
+    "migrate": "node migrations/migrate.js",
+    "seed": "node database/seeds/index.js",
+    "lint": "eslint src/**/*.js",
+    "format": "prettier --write \"src/**/*.js\"",
+    "build": "echo \"No build needed for Node.js backend\""
+  },
+  "keywords": [
+    "itsm",
+    "ticketing",
+    "incident-management",
+    "service-management"
+  ],
+  "author": "Madison88 IT Team",
+  "license": "PROPRIETARY",
+  "dependencies": {
+    "express": "^4.18.2",
+    "express-jwt": "^8.4.1",
+    "jsonwebtoken": "^8.5.1",
+    "bcryptjs": "^2.4.3",
+    "pg": "^8.11.3",
+    "redis": "^4.6.12",
+    "dotenv": "^16.3.1",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "morgan": "^1.10.0",
+    "express-rate-limit": "^7.1.5",
+    "multer": "^1.4.5-lts.1",
+    "axios": "^1.6.5",
+    "nodemailer": "^6.9.7",
+    "joi": "^17.11.0",
+    "moment-timezone": "^0.5.45",
+    "uuid": "^9.0.1",
+    "compression": "^1.7.4",
+    "socket.io": "^4.7.2",
+    "bull": "^4.13.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2",
+    "jest": "^29.7.0",
+    "supertest": "^6.3.3",
+    "eslint": "^8.54.0",
+    "eslint-config-airbnb-base": "^15.0.0",
+    "eslint-plugin-import": "^2.29.0",
+    "prettier": "^3.1.0"
+  },
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
+  }
+}
