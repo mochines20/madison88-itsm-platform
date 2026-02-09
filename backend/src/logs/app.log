@@ -949,3 +949,4 @@
 {"timestamp":"2026-02-09T08:38:59.417Z","level":"INFO","message":"Database connection established"}
 {"timestamp":"2026-02-09T08:39:08.628Z","level":"INFO","message":"Sending EmailJS email","data":{"to":"techsupportph@madison88.com","subject":"Ticket Resolved: TKT-2026-0004","serviceId":"service_i8rdbua","templateId":"template_9eco8jk"}}
 {"timestamp":"2026-02-09T08:39:09.582Z","level":"ERROR","message":"Failed to send EmailJS email","data":{"error":"Request failed with status code 400","status":400,"data":"The parameters are invalid. Please check https://www.emailjs.com/docs/rest-api/send/","to":"techsupportph@madison88.com","subject":"Ticket Resolved: TKT-2026-0004"}}
+{"timestamp":"2026-02-09T08:43:59.678Z","level":"INFO","message":"Database connection established"}
