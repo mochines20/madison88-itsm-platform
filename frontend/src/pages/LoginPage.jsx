@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import axios from "axios";
+import brandLogo from "../assets/Madison-88-Logo-250.png";
 
 const LoginPage = ({ onLogin }) => {
   const [email, setEmail] = useState("");
@@ -25,7 +26,11 @@ const LoginPage = ({ onLogin }) => {
     <div className="auth-shell">
       <form onSubmit={handleSubmit} className="auth-card">
         <div className="auth-header">
-          <span className="brand-mark">M88</span>
+          <img
+            className="brand-logo brand-logo-lg"
+            src={brandLogo}
+            alt="Madison88"
+          />
           <div>
             <h2>Madison88 ITSM</h2>
             <p>Sign in to the service desk.</p>

@@ -38,10 +38,12 @@ async function ensureUniqueSlug(baseSlug, currentId = null) {
  */
 router.get('/articles', authenticate, async (req, res, next) => {
   try {
-    const { category, status = 'published', page = 1, limit = 50 } = req.query;
+    const { category, status, page = 1, limit = 50 } = req.query;
+    const isPrivileged = ['it_manager', 'system_admin'].includes(req.user.role);
+    const resolvedStatus = isPrivileged ? status : 'published';
     const data = await KnowledgeBaseModel.listArticles({
       category,
-      status,
+      status: resolvedStatus,
       page: parseInt(page, 10),
       limit: parseInt(limit, 10),
     });
@@ -63,6 +65,10 @@ router.get('/articles/:id', authenticate, async (req, res, next) => {
     if (!article) {
       return res.status(404).json({ status: 'error', message: 'Article not found' });
     }
+    const isPrivileged = ['it_manager', 'system_admin'].includes(req.user.role);
+    if (!isPrivileged && article.status !== 'published') {
+      return res.status(403).json({ status: 'error', message: 'Forbidden' });
+    }
     await KnowledgeBaseModel.incrementViews(id);
     res.json({ status: 'success', data: { article } });
   } catch (err) {
@@ -74,7 +80,7 @@ router.get('/articles/:id', authenticate, async (req, res, next) => {
  * @route POST /api/kb/articles
  * @desc Create KB article
  */
-router.post('/articles', authenticate, authorize(['it_agent', 'it_manager', 'system_admin']), async (req, res, next) => {
+router.post('/articles', authenticate, authorize(['it_manager', 'system_admin']), async (req, res, next) => {
   try {
     const schema = Joi.object({
       title: Joi.string().min(5).max(255).required(),
@@ -120,7 +126,7 @@ router.post('/articles', authenticate, authorize(['it_agent', 'it_manager', 'sys
  * @route PATCH /api/kb/articles/:id
  * @desc Update KB article
  */
-router.patch('/articles/:id', authenticate, authorize(['it_agent', 'it_manager', 'system_admin']), async (req, res, next) => {
+router.patch('/articles/:id', authenticate, authorize(['it_manager', 'system_admin']), async (req, res, next) => {
   try {
     const { id } = req.params;
     const schema = Joi.object({
@@ -183,7 +189,9 @@ router.patch('/articles/:id', authenticate, authorize(['it_agent', 'it_manager',
  */
 router.get('/search', authenticate, async (req, res, next) => {
   try {
-    const { q, category, page = 1, limit = 50 } = req.query;
+    const { q, category, status, page = 1, limit = 50 } = req.query;
+    const isPrivileged = ['it_manager', 'system_admin'].includes(req.user.role);
+    const resolvedStatus = isPrivileged ? status : 'published';
 
     if (!q) {
       return res.status(400).json({
@@ -195,6 +203,7 @@ router.get('/search', authenticate, async (req, res, next) => {
     const data = await KnowledgeBaseModel.searchArticles({
       q,
       category,
+      status: resolvedStatus,
       page: parseInt(page, 10),
       limit: parseInt(limit, 10),
     });

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import brandLogo from "./assets/Madison-88-Logo-250.png";
 import LoginPage from "./pages/LoginPage";
 import TicketsPage from "./pages/TicketsPage";
 import NewTicketPage from "./pages/NewTicketPage";
@@ -63,9 +64,7 @@ function App() {
     ...(isManager || isAdmin ? [{ key: "team", label: "Team Queue" }] : []),
     ...(user?.role === "end_user" ? [{ key: "new", label: "New Ticket" }] : []),
     { key: "kb", label: "Knowledge Base" },
-    ...(isAgent || isManager || isAdmin
-      ? [{ key: "kb-editor", label: "KB Editor" }]
-      : []),
+    ...(isManager || isAdmin ? [{ key: "kb-editor", label: "KB Editor" }] : []),
     ...(isManager || isAdmin
       ? [{ key: "advanced-reporting", label: "Advanced Reporting" }]
       : []),
@@ -104,7 +103,11 @@ function App() {
     <div className={`app-shell ${roleClass}`}>
       <aside className="sidebar">
         <div className="brand">
-          <span className="brand-mark">M88</span>
+          <img
+            className="brand-logo"
+            src={brandLogo}
+            alt="Madison88"
+          />
           <div>
             <h1>Madison88 ITSM</h1>
             <p>Service Desk</p>
@@ -178,8 +181,10 @@ function App() {
             }}
           />
         )}
-        {activeTab === "kb" && <KnowledgeBasePage />}
-        {activeTab === "kb-editor" && <KnowledgeBaseEditor />}
+        {activeTab === "kb" && <KnowledgeBasePage user={user} />}
+        {activeTab === "kb-editor" && (isManager || isAdmin) && (
+          <KnowledgeBaseEditor />
+        )}
         {activeTab === "advanced-reporting" && <AdvancedReportingPage />}
         {activeTab === "changes" && <ChangeManagementPage user={user} />}
         {activeTab === "assets" && <AssetsPage user={user} />}

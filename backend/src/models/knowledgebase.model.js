@@ -88,7 +88,7 @@ const KnowledgeBaseModel = {
     return result.rows[0];
   },
 
-  async searchArticles({ q, category, page, limit }) {
+  async searchArticles({ q, category, status, page, limit }) {
     const where = [];
     const values = [];
 
@@ -98,6 +98,11 @@ const KnowledgeBaseModel = {
     if (category) {
       values.push(category);
       where.push(`category = $${values.length}`);
+    }
+
+    if (status) {
+      values.push(status);
+      where.push(`status = $${values.length}`);
     }
 
     const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
