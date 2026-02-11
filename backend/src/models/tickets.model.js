@@ -127,6 +127,7 @@ const TicketsModel = {
     }
     if (filters.exclude_archived) {
       where.push('(is_archived IS NULL OR is_archived = false)');
+      where.push("status NOT IN ('Resolved', 'Closed')");
     }
     const hasTeamIds = filters.assigned_team_ids && filters.assigned_team_ids.length;
     const hasMemberIds = filters.assigned_to_in && filters.assigned_to_in.length;
@@ -158,8 +159,14 @@ const TicketsModel = {
     const total = parseInt(countResult.rows[0].count, 10);
 
     values.push(pagination.limit, offset);
+    const orderBy = [
+      "(EXISTS (SELECT 1 FROM ticket_escalations e WHERE e.ticket_id = tickets.ticket_id) OR (tickets.sla_due_date IS NOT NULL AND tickets.created_at IS NOT NULL AND tickets.status NOT IN ('Resolved','Closed') AND (EXTRACT(EPOCH FROM (NOW() - tickets.created_at)) / NULLIF(EXTRACT(EPOCH FROM (tickets.sla_due_date - tickets.created_at)), 0) * 100) >= 80)) DESC NULLS LAST",
+      "CASE tickets.priority WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 WHEN 'P4' THEN 4 ELSE 5 END ASC",
+      "(tickets.sla_breached = true OR (tickets.sla_due_date IS NOT NULL AND tickets.sla_due_date < NOW() AND tickets.status NOT IN ('Resolved','Closed'))) DESC NULLS LAST",
+      'tickets.created_at DESC',
+    ].join(', ');
     const result = await db.query(
-      `SELECT * FROM tickets ${whereClause} ORDER BY created_at DESC LIMIT $${values.length - 1} OFFSET $${values.length}`,
+      `SELECT * FROM tickets ${whereClause} ORDER BY ${orderBy} LIMIT $${values.length - 1} OFFSET $${values.length}`,
       values
     );
 
@@ -406,18 +413,32 @@ const TicketsModel = {
     return result.rows;
   },
 
-  async findPotentialDuplicates({ title, description, excludeTicketId }) {
+  async findPotentialDuplicates({ title, description, excludeTicketId, userId, createdAfter }) {
     const needle = `%${title || description || ''}%`;
+    const conditions = ['($1::uuid IS NULL OR ticket_id <> $1)', '(title ILIKE $2 OR description ILIKE $2)'];
+    const values = [excludeTicketId || null, needle];
+    if (userId) {
+      values.push(userId);
+      conditions.push(`user_id = $${values.length}`);
+    }
+    if (createdAfter) {
+      values.push(createdAfter);
+      conditions.push(`created_at >= $${values.length}`);
+    }
     const result = await db.query(
       `SELECT ticket_id, ticket_number, title, status, created_at
        FROM tickets
-       WHERE ($1::uuid IS NULL OR ticket_id <> $1)
-         AND (title ILIKE $2 OR description ILIKE $2)
+       WHERE ${conditions.join(' AND ')}
        ORDER BY created_at DESC
        LIMIT 5`,
-      [excludeTicketId || null, needle]
+      values
     );
     return result.rows;
+  },
+
+  async deleteTicket(ticketId) {
+    const result = await db.query('DELETE FROM tickets WHERE ticket_id = $1 RETURNING ticket_id', [ticketId]);
+    return result.rows[0];
   },
 };
 

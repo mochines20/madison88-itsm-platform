@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import apiClient from "../../api/client";
+import { onDashboardRefresh } from "../../api/socket";
 
 const AdminDashboard = () => {
   const [users, setUsers] = useState(0);
@@ -17,29 +18,34 @@ const AdminDashboard = () => {
   const [agentStatusMatrix, setAgentStatusMatrix] = useState([]);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    const load = async () => {
-      setError("");
-      try {
-        const [usersRes, statusRes, slaRes, reportingRes] = await Promise.all([
-          apiClient.get("/users"),
-          apiClient.get("/dashboard/status-summary"),
-          apiClient.get("/dashboard/sla-summary"),
-          apiClient.get("/dashboard/advanced-reporting"),
-        ]);
-        setUsers(usersRes.data.data.users?.length || 0);
-        setStatusSummary(statusRes.data.data.summary || {});
-        setSlaSummary(slaRes.data.data.summary || {});
-        setAgentStatusMatrix(
-          reportingRes.data.data.agent_status_matrix || [],
-        );
-      } catch (err) {
-        setError(err.response?.data?.message || "Failed to load dashboard");
-      }
-    };
-
-    load();
+  const load = useCallback(async () => {
+    setError("");
+    try {
+      const [usersRes, statusRes, slaRes, reportingRes] = await Promise.all([
+        apiClient.get("/users"),
+        apiClient.get("/dashboard/status-summary"),
+        apiClient.get("/dashboard/sla-summary"),
+        apiClient.get("/dashboard/advanced-reporting"),
+      ]);
+      setUsers(usersRes.data.data.users?.length || 0);
+      setStatusSummary(statusRes.data.data.summary || {});
+      setSlaSummary(slaRes.data.data.summary || {});
+      setAgentStatusMatrix(
+        reportingRes.data.data.agent_status_matrix || [],
+      );
+    } catch (err) {
+      setError(err.response?.data?.message || "Failed to load dashboard");
+    }
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  useEffect(() => {
+    const unsubscribe = onDashboardRefresh(() => load());
+    return unsubscribe;
+  }, [load]);
 
   const totalTickets =
     (statusSummary.open || 0) +

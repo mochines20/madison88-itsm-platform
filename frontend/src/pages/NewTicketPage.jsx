@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import apiClient from "../api/client";
 import ReactQuill from "react-quill";
 import "react-quill/dist/quill.snow.css";
@@ -45,6 +45,8 @@ const NewTicketPage = ({ onCreated }) => {
   const [assets, setAssets] = useState([]);
   const [selectedAssetId, setSelectedAssetId] = useState("");
   const [duplicates, setDuplicates] = useState([]);
+  const [duplicateConflict, setDuplicateConflict] = useState(null);
+  const confirmDuplicateRef = useRef(false);
   const [templates, setTemplates] = useState([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [form, setForm] = useState({
@@ -167,25 +169,37 @@ const NewTicketPage = ({ onCreated }) => {
       setError(issueError || impactError);
       return;
     }
-    setLoading(true);
     setError("");
     setSuccess("");
+    setDuplicateConflict(null);
+    setLoading(true);
+
+    const confirmDuplicate = confirmDuplicateRef.current;
+    confirmDuplicateRef.current = false;
+
+    const idempotencyKey = `ticket-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const headers = { "X-Idempotency-Key": idempotencyKey };
 
     try {
-      const res = await apiClient.post("/tickets", form);
-      const ticket = res.data.data.ticket;
-      setDuplicates(res.data.data.possible_duplicates || []);
-
-      if (files.length) {
+      let ticket;
+      if (files.length > 0) {
         const formData = new FormData();
+        Object.entries(form).forEach(([k, v]) => {
+          if (v != null && v !== "") formData.append(k, v);
+        });
+        if (confirmDuplicate) formData.append("confirm_duplicate", "true");
         files.forEach((file) => formData.append("files", file));
-        await apiClient.post(
-          `/tickets/${ticket.ticket_id}/attachments`,
-          formData,
-          {
-            headers: { "Content-Type": "multipart/form-data" },
-          },
-        );
+        const res = await apiClient.post("/tickets/with-attachments", formData, {
+          headers: { ...headers, "Content-Type": "multipart/form-data" },
+        });
+        ticket = res.data.data.ticket;
+        setDuplicates(res.data.data.possible_duplicates || []);
+      } else {
+        const payload = { ...form };
+        if (confirmDuplicate) payload.confirm_duplicate = true;
+        const res = await apiClient.post("/tickets", payload, { headers });
+        ticket = res.data.data.ticket;
+        setDuplicates(res.data.data.possible_duplicates || []);
       }
 
       if (selectedAssetId) {
@@ -218,10 +232,22 @@ const NewTicketPage = ({ onCreated }) => {
       setStep(0);
       if (onCreated) onCreated(ticket);
     } catch (err) {
-      setError(err.response?.data?.message || "Failed to create ticket");
+      if (err.response?.status === 409 && err.response?.data?.possible_duplicates) {
+        setDuplicateConflict(err.response.data.possible_duplicates);
+        setError(err.response?.data?.message || "Possible duplicate ticket.");
+      } else {
+        setError(err.response?.data?.message || "Failed to create ticket");
+      }
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSubmitAnyway = () => {
+    confirmDuplicateRef.current = true;
+    setError("");
+    setDuplicateConflict(null);
+    handleSubmit();
   };
 
   return (
@@ -242,7 +268,31 @@ const NewTicketPage = ({ onCreated }) => {
         ))}
       </div>
 
-      {error && <div className="panel error">{error}</div>}
+      {error && (
+        <div className="panel error">
+          {error}
+          {duplicateConflict && duplicateConflict.length > 0 && (
+            <div className="attachment-list" style={{ marginTop: 12 }}>
+              <strong>Similar tickets:</strong>
+              {duplicateConflict.map((dup) => (
+                <div key={dup.ticket_id} className="attachment-item">
+                  <span>{dup.ticket_number}</span>
+                  <span>{dup.title}</span>
+                </div>
+              ))}
+              <button
+                type="button"
+                className="btn primary"
+                style={{ marginTop: 8 }}
+                onClick={handleSubmitAnyway}
+                disabled={loading}
+              >
+                Submit anyway
+              </button>
+            </div>
+          )}
+        </div>
+      )}
       {success && (
         <div className="panel success">
           {success}

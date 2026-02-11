@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import apiClient from "../../api/client";
+import { onDashboardRefresh } from "../../api/socket";
 
 const ManagerDashboard = () => {
   const [sla, setSla] = useState({});
@@ -17,25 +18,30 @@ const ManagerDashboard = () => {
   });
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    const load = async () => {
-      setError("");
-      try {
-        const [slaRes, agingRes, statusRes] = await Promise.all([
-          apiClient.get("/dashboard/sla-performance"),
-          apiClient.get("/dashboard/aging-report"),
-          apiClient.get("/dashboard/status-summary"),
-        ]);
-        setSla(slaRes.data.data.sla_performance || {});
-        setAging(agingRes.data.data.aging_report || {});
-        setStatusSummary(statusRes.data.data.summary || {});
-      } catch (err) {
-        setError(err.response?.data?.message || "Failed to load dashboard");
-      }
-    };
-
-    load();
+  const load = useCallback(async () => {
+    setError("");
+    try {
+      const [slaRes, agingRes, statusRes] = await Promise.all([
+        apiClient.get("/dashboard/sla-performance"),
+        apiClient.get("/dashboard/aging-report"),
+        apiClient.get("/dashboard/status-summary"),
+      ]);
+      setSla(slaRes.data.data.sla_performance || {});
+      setAging(agingRes.data.data.aging_report || {});
+      setStatusSummary(statusRes.data.data.summary || {});
+    } catch (err) {
+      setError(err.response?.data?.message || "Failed to load dashboard");
+    }
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  useEffect(() => {
+    const unsubscribe = onDashboardRefresh(() => load());
+    return unsubscribe;
+  }, [load]);
 
   return (
     <div className="dashboard-stack">

@@ -1,5 +1,6 @@
 const Joi = require('joi');
 const path = require('path');
+const AppError = require('../utils/AppError');
 const TicketsModel = require('../models/tickets.model');
 const AssetsModel = require('../models/assets.model');
 const SlaModel = require('../models/sla.model');
@@ -7,6 +8,11 @@ const PriorityOverrideModel = require('../models/priority-override.model');
 const UserModel = require('../models/user.model');
 const NotificationService = require('./notification.service');
 const NotificationsModel = require('../models/notifications.model');
+
+const DEFAULT_RESPONSE_HOURS = Number(process.env.DEFAULT_SLA_RESPONSE_HOURS) || 4;
+const DEFAULT_RESOLUTION_HOURS = Number(process.env.DEFAULT_SLA_RESOLUTION_HOURS) || 24;
+const DUPLICATE_CHECK_HOURS = Number(process.env.DUPLICATE_CHECK_HOURS) || 24;
+const ATTACHMENT_REQUIRED = process.env.ATTACHMENT_REQUIRED === 'true';
 
 const createSchema = Joi.object({
   title: Joi.string().min(5).max(255).required(),
@@ -165,12 +171,11 @@ function mapPriorityToSeverity(priority) {
 
 async function buildSla(priority) {
   const rule = await TicketsModel.getSlaRule(priority);
-  if (!rule) {
-    return { sla_due_date: null, sla_response_due: null };
-  }
   const now = new Date();
-  const responseDue = new Date(now.getTime() + rule.response_time_hours * 60 * 60 * 1000);
-  const resolutionDue = new Date(now.getTime() + rule.resolution_time_hours * 60 * 60 * 1000);
+  const responseHours = rule ? rule.response_time_hours : DEFAULT_RESPONSE_HOURS;
+  const resolutionHours = rule ? rule.resolution_time_hours : DEFAULT_RESOLUTION_HOURS;
+  const responseDue = new Date(now.getTime() + responseHours * 60 * 60 * 1000);
+  const resolutionDue = new Date(now.getTime() + resolutionHours * 60 * 60 * 1000);
   return { sla_due_date: resolutionDue, sla_response_due: responseDue };
 }
 
@@ -183,9 +188,25 @@ async function generateTicketNumber() {
 
 const TicketsService = {
   async createTicket({ payload, user, meta }) {
-    if (user.role !== 'end_user') throw new Error('Forbidden');
+    if (user.role !== 'end_user') throw new AppError('Forbidden', 403);
+    if (ATTACHMENT_REQUIRED) {
+      throw new AppError('When ATTACHMENT_REQUIRED is enabled, use POST /tickets/with-attachments with at least one file.', 400);
+    }
     const { error, value } = createSchema.validate(payload, { abortEarly: false });
-    if (error) throw new Error(error.details.map((d) => d.message).join(', '));
+    if (error) throw new AppError(error.details.map((d) => d.message).join(', '), 400);
+
+    const createdAfter = new Date(Date.now() - DUPLICATE_CHECK_HOURS * 60 * 60 * 1000);
+    const possible_duplicates = await TicketsModel.findPotentialDuplicates({
+      title: value.title,
+      description: value.description,
+      userId: user.user_id,
+      createdAfter,
+    });
+    if (possible_duplicates.length && !payload.confirm_duplicate) {
+      const err = new AppError('Possible duplicate ticket. Submit with confirm_duplicate: true to create anyway.', 409);
+      err.possible_duplicates = possible_duplicates;
+      throw err;
+    }
 
     const rules = await TicketsModel.getClassificationRules();
     const matchedRule = matchClassificationRule(rules, {
@@ -208,8 +229,17 @@ const TicketsService = {
     });
 
     const assigned_team = routingRule?.assigned_team || null;
-    const assigned_to = null;
-    const assigned_at = null;
+    let assigned_to = null;
+    let assigned_at = null;
+    let assigned_by = null;
+    if (assigned_team) {
+      const agentId = await TicketsModel.getLeastLoadedAgent(assigned_team);
+      if (agentId) {
+        assigned_to = agentId;
+        assigned_at = new Date();
+        assigned_by = null;
+      }
+    }
 
     const ticket = await TicketsModel.createTicket({
       ticket_number,
@@ -227,7 +257,7 @@ const TicketsService = {
       assigned_team,
       assigned_to,
       assigned_at,
-      assigned_by: null,
+      assigned_by,
       ...sla,
     });
 
@@ -302,13 +332,190 @@ const TicketsService = {
     return { ticket, possible_duplicates };
   },
 
+  async createTicketWithAttachments({ payload, files, user, meta }) {
+    if (user.role !== 'end_user') throw new AppError('Forbidden', 403);
+    if (ATTACHMENT_REQUIRED && (!files || files.length === 0)) {
+      throw new AppError('At least one attachment is required when ATTACHMENT_REQUIRED is enabled.', 400);
+    }
+    const { error, value } = createSchema.validate(payload, { abortEarly: false });
+    if (error) throw new AppError(error.details.map((d) => d.message).join(', '), 400);
+
+    const createdAfter = new Date(Date.now() - DUPLICATE_CHECK_HOURS * 60 * 60 * 1000);
+    const possible_duplicates = await TicketsModel.findPotentialDuplicates({
+      title: value.title,
+      description: value.description,
+      userId: user.user_id,
+      createdAfter,
+    });
+    if (possible_duplicates.length && !payload.confirm_duplicate) {
+      const err = new AppError('Possible duplicate ticket. Submit with confirm_duplicate: true to create anyway.', 409);
+      err.possible_duplicates = possible_duplicates;
+      throw err;
+    }
+
+    const rules = await TicketsModel.getClassificationRules();
+    const matchedRule = matchClassificationRule(rules, {
+      description: value.description,
+      businessImpact: value.business_impact,
+    });
+    const priority = value.priority || matchedRule?.assigned_priority || detectPriority({
+      description: value.description,
+      businessImpact: value.business_impact,
+      role: user.role,
+    });
+
+    const ticket_number = await generateTicketNumber();
+    const sla = await buildSla(priority);
+
+    const routingRule = await TicketsModel.getRoutingRule({
+      category: value.category,
+      subcategory: value.subcategory,
+      location: value.location,
+    });
+
+    const assigned_team = routingRule?.assigned_team || null;
+    let assigned_to = null;
+    let assigned_at = null;
+    let assigned_by = null;
+    if (assigned_team) {
+      const agentId = await TicketsModel.getLeastLoadedAgent(assigned_team);
+      if (agentId) {
+        assigned_to = agentId;
+        assigned_at = new Date();
+        assigned_by = null;
+      }
+    }
+
+    const ticket = await TicketsModel.createTicket({
+      ticket_number,
+      user_id: user.user_id,
+      category: value.category,
+      subcategory: value.subcategory || null,
+      priority: routingRule?.priority_override || priority,
+      title: value.title,
+      description: value.description,
+      business_impact: value.business_impact,
+      status: 'New',
+      location: value.location,
+      tags: value.tags || null,
+      ticket_type: value.ticket_type || 'incident',
+      assigned_team,
+      assigned_to,
+      assigned_at,
+      assigned_by,
+      ...sla,
+    });
+
+    await TicketsModel.createStatusHistory({
+      ticket_id: ticket.ticket_id,
+      old_status: null,
+      new_status: ticket.status,
+      changed_by: user.user_id,
+      change_reason: 'Ticket created',
+    });
+
+    await TicketsModel.createAuditLog({
+      ticket_id: ticket.ticket_id,
+      user_id: user.user_id,
+      action_type: 'created',
+      entity_type: 'ticket',
+      entity_id: ticket.ticket_id,
+      new_value: JSON.stringify(ticket),
+      description: 'Ticket created',
+      ip_address: meta.ip,
+      user_agent: meta.userAgent,
+      session_id: meta.sessionId,
+    });
+
+    if (assigned_team) {
+      await TicketsModel.createAuditLog({
+        ticket_id: ticket.ticket_id,
+        user_id: user.user_id,
+        action_type: 'routed',
+        entity_type: 'ticket',
+        entity_id: ticket.ticket_id,
+        new_value: JSON.stringify({ assigned_team }),
+        description: 'Ticket routed to team queue',
+        ip_address: meta.ip,
+        user_agent: meta.userAgent,
+        session_id: meta.sessionId,
+      });
+    }
+
+    if (files && files.length) {
+      try {
+        for (const file of files) {
+          const fileName = file.filename || path.basename(file.path || '');
+          const filePath = fileName ? `uploads/${fileName}` : file.path;
+          await TicketsModel.createAttachment({
+            ticket_id: ticket.ticket_id,
+            file_name: file.originalname,
+            file_path: filePath,
+            file_size: file.size,
+            file_type: file.mimetype,
+            uploaded_by: user.user_id,
+          });
+        }
+        await TicketsModel.createAuditLog({
+          ticket_id: ticket.ticket_id,
+          user_id: user.user_id,
+          action_type: 'attachment_added',
+          entity_type: 'ticket_attachment',
+          entity_id: ticket.ticket_id,
+          new_value: JSON.stringify({ count: files.length }),
+          description: 'Attachments uploaded on create',
+          ip_address: meta.ip,
+          user_agent: meta.userAgent,
+          session_id: meta.sessionId,
+        });
+      } catch (attachErr) {
+        await TicketsModel.deleteTicket(ticket.ticket_id);
+        throw new AppError(attachErr.message || 'Failed to save attachments; ticket was not created.', 500);
+      }
+    }
+
+    const possible_duplicates = await TicketsModel.findPotentialDuplicates({
+      title: value.title,
+      description: value.description,
+      excludeTicketId: ticket.ticket_id,
+    });
+
+    const adminUsers = await UserModel.listUsers({ role: 'system_admin' });
+    const adminEmailOverride = process.env.ADMIN_NOTIFICATION_EMAIL;
+    const requester = await UserModel.findById(user.user_id);
+    const adminEmailRecipients = adminEmailOverride
+      ? [{ email: adminEmailOverride }]
+      : adminUsers;
+
+    await NotificationService.sendNewTicketNotice({
+      ticket,
+      requester,
+      recipients: adminEmailRecipients,
+    });
+
+    if (adminUsers.length) {
+      const message = `${ticket.ticket_number}: ${ticket.title}`;
+      for (const admin of adminUsers) {
+        await NotificationsModel.createNotification({
+          user_id: admin.user_id,
+          ticket_id: ticket.ticket_id,
+          type: 'ticket_created',
+          title: 'New ticket',
+          message,
+        });
+      }
+    }
+
+    return { ticket, possible_duplicates };
+  },
+
   async listTickets({ query, user }) {
     const { status, priority, category, assigned_to, unassigned, include_archived, page = 1, limit = 50, q, tags, date_from, date_to } = query;
     const parsedTags = typeof tags === 'string'
       ? tags.split(',').map((tag) => tag.trim()).filter(Boolean)
       : [];
     const filters = { status, priority, category, q, tags: parsedTags, date_from, date_to };
-    if (include_archived !== 'true') {
+    if (include_archived !== 'true' && !['Resolved', 'Closed'].includes(status)) {
       filters.exclude_archived = true;
     }
 
@@ -471,15 +678,21 @@ const TicketsService = {
     if (statusChanged && value.status === 'Resolved') {
       value.resolved_at = new Date();
       value.resolved_by = user.user_id;
+      value.is_archived = true;
+      value.archived_at = new Date();
     }
 
     if (statusChanged && value.status === 'Closed') {
       value.closed_at = new Date();
       value.closed_by = user.user_id;
+      value.is_archived = true;
+      value.archived_at = new Date();
     }
 
     if (statusChanged && value.status === 'Reopened') {
       value.reopened_count = (existing.reopened_count || 0) + 1;
+      value.is_archived = false;
+      value.archived_at = null;
     }
 
     const updated = await TicketsModel.updateTicket(ticketId, value);
@@ -662,11 +875,21 @@ const TicketsService = {
   },
 
   async getAuditLog({ ticketId, user }) {
-    if (user.role !== 'system_admin') throw new Error('Forbidden');
     const ticket = await TicketsModel.getTicketById(ticketId);
-    if (!ticket) throw new Error('Ticket not found');
-    const audit_logs = await TicketsModel.getAuditLogs(ticketId);
-    return { audit_logs };
+    if (!ticket) throw new AppError('Ticket not found', 404);
+    if (user.role === 'system_admin') {
+      const audit_logs = await TicketsModel.getAuditLogs(ticketId);
+      return { audit_logs };
+    }
+    if (user.role === 'it_manager') {
+      const teamIds = await TicketsModel.listTeamIdsForUser(user.user_id);
+      const memberIds = teamIds.length ? await TicketsModel.listTeamMemberIdsForTeams(teamIds) : [];
+      const canAccess = teamIds.includes(ticket.assigned_team) || (ticket.assigned_to && memberIds.includes(ticket.assigned_to));
+      if (!canAccess) throw new AppError('Forbidden', 403);
+      const audit_logs = await TicketsModel.getAuditLogs(ticketId);
+      return { audit_logs };
+    }
+    throw new AppError('Forbidden', 403);
   },
 
   async getStatusHistory({ ticketId, user }) {

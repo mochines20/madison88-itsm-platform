@@ -44,9 +44,15 @@ const upload = multer({
 
 /**
  * @route POST /api/tickets
- * @desc Create a new ticket
+ * @desc Create a new ticket (JSON body)
  */
-router.post('/', authenticate, TicketsController.createTicket);
+router.post('/', authenticate, authorize(['end_user']), TicketsController.createTicket);
+
+/**
+ * @route POST /api/tickets/with-attachments
+ * @desc Create a new ticket with attachments in one request (multipart/form-data). Use to avoid orphan tickets if attachment upload fails.
+ */
+router.post('/with-attachments', authenticate, authorize(['end_user']), upload.array('files', 5), TicketsController.createTicketWithAttachments);
 
 /**
  * @route GET /api/tickets
@@ -124,6 +130,6 @@ router.post('/:id/escalations', authenticate, TicketsController.createEscalation
  * @route GET /api/tickets/:id/audit-log
  * @desc Get ticket audit trail
  */
-router.get('/:id/audit-log', authenticate, authorize(['system_admin']), TicketsController.getAuditLog);
+router.get('/:id/audit-log', authenticate, authorize(['system_admin', 'it_manager']), TicketsController.getAuditLog);
 
 module.exports = router;

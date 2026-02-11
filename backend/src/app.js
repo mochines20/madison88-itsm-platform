@@ -25,7 +25,7 @@ const corsOptions = {
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Idempotency-Key']
 };
 
 app.use(cors(corsOptions));
@@ -65,6 +65,7 @@ app.get('/health', (req, res) => {
 });
 
 // API Routes
+app.use('/api/config', require('./routes/config.routes'));
 app.use('/api/auth', require('./routes/auth.routes'));
 app.use('/api/tickets', require('./routes/tickets.routes'));
 app.use('/api/dashboard', require('./routes/dashboard.routes'));
@@ -95,10 +96,18 @@ app.use((req, res) => {
   });
 });
 
-// Error Handler Middleware
+// Error Handler Middleware - map service errors to correct HTTP status
 app.use((err, req, res, next) => {
-  const status = err.status || 500;
+  let status = err.status;
   const message = err.message || 'Internal Server Error';
+  if (status == null) {
+    const lower = message.toLowerCase();
+    if (lower.includes('forbidden') || lower.includes('insufficient permissions')) status = 403;
+    else if (lower.includes('not found')) status = 404;
+    else if (lower.includes('required') || lower.includes('invalid') || lower.includes('validation') || lower.includes('must be')) status = 400;
+    else if (lower.includes('already exists') || lower.includes('duplicate') || lower.includes('pending') && lower.includes('override')) status = 409;
+    else status = 500;
+  }
 
   console.error('Error:', {
     status,
@@ -116,5 +125,13 @@ app.use((err, req, res, next) => {
 
 const db = require('./config/database');
 app.set('db', db);
+
+let redisClient;
+try {
+  redisClient = require('./config/redis');
+} catch {
+  redisClient = null;
+}
+app.set('redis', redisClient);
 
 module.exports = app;

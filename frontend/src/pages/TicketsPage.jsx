@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import apiClient from "../api/client";
+import { onDashboardRefresh } from "../api/socket";
 
 const statusColor = {
   New: "badge-new",
@@ -37,6 +38,8 @@ const categoryOptions = [
   "Other",
 ];
 
+const PAGE_SIZE = 5;
+
 const TicketsPage = ({
   onSelectTicket,
   refreshKey,
@@ -63,9 +66,18 @@ const TicketsPage = ({
   const [bulkAssignee, setBulkAssignee] = useState("");
   const [bulkLoading, setBulkLoading] = useState(false);
   const [bulkRefresh, setBulkRefresh] = useState(0);
+  const [socketRefreshKey, setSocketRefreshKey] = useState(0);
   const [now, setNow] = useState(Date.now());
   const [pollKey, setPollKey] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0 });
   const previousStatusRef = useRef(new Map());
+
+  useEffect(() => {
+    const unsubscribe = onDashboardRefresh(() => setSocketRefreshKey((k) => k + 1));
+    return unsubscribe;
+  }, []);
+
   const isManager = user?.role === "it_manager";
   const isAdmin = user?.role === "system_admin";
   const canBulkAssign = isManager || isAdmin;
@@ -93,8 +105,12 @@ const TicketsPage = ({
         if (categoryFilter) params.category = categoryFilter;
         if (dateFrom) params.date_from = dateFrom;
         if (dateTo) params.date_to = dateTo;
+        params.page = page;
+        params.limit = PAGE_SIZE;
         const res = await apiClient.get("/tickets", { params });
         const nextTickets = res.data.data.tickets || [];
+        const pag = res.data.data.pagination || { page: 1, limit: PAGE_SIZE, total: 0 };
+        setPagination(pag);
         if (onResolvedTickets) {
           const resolvedUpdates = [];
           nextTickets.forEach((ticket) => {
@@ -117,6 +133,7 @@ const TicketsPage = ({
         });
         previousStatusRef.current = nextStatusMap;
         setTickets(nextTickets);
+        if (nextTickets.length === 0 && page > 1 && pag.total > 0) setPage(1);
       } catch (err) {
         setError(err.response?.data?.message || "Failed to load tickets");
       } finally {
@@ -141,6 +158,8 @@ const TicketsPage = ({
     dateTo,
     bulkRefresh,
     pollKey,
+    socketRefreshKey,
+    page,
   ]);
 
   useEffect(() => {
@@ -203,13 +222,10 @@ const TicketsPage = ({
     return Number.MAX_SAFE_INTEGER;
   };
 
-  const displayedTickets = (() => {
-    if (!isTeamUrgentView) return tickets;
-    const sorted = [...tickets].sort(
-      (a, b) => getUrgencyScore(a) - getUrgencyScore(b),
-    );
-    return sorted.slice(0, 5);
-  })();
+  const displayedTickets = tickets;
+  const total = pagination.total || 0;
+  const hasNext = total > page * PAGE_SIZE;
+  const hasPrev = page > 1;
 
   useEffect(() => {
     setSelectedTickets((prev) =>
@@ -271,7 +287,7 @@ const TicketsPage = ({
               className={
                 viewMode === "my" ? "filter-pill active" : "filter-pill"
               }
-              onClick={() => onViewModeChange("my")}
+              onClick={() => { setPage(1); onViewModeChange("my"); }}
             >
               My Tickets
             </button>
@@ -279,7 +295,7 @@ const TicketsPage = ({
               className={
                 viewMode === "team" ? "filter-pill active" : "filter-pill"
               }
-              onClick={() => onViewModeChange("team")}
+              onClick={() => { setPage(1); onViewModeChange("team"); }}
             >
               Team Queue
             </button>
@@ -289,18 +305,18 @@ const TicketsPage = ({
       <div className="filter-bar ticket-filters">
         <input
           value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
+          onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
           placeholder="Search title, description, ticket number"
         />
         <input
           value={tagQuery}
-          onChange={(e) => setTagQuery(e.target.value)}
+          onChange={(e) => { setTagQuery(e.target.value); setPage(1); }}
           placeholder="Tags (comma-separated)"
         />
         {(isManager || isAdmin) && (
           <select
             value={assignmentFilter}
-            onChange={(e) => setAssignmentFilter(e.target.value)}
+            onChange={(e) => { setAssignmentFilter(e.target.value); setPage(1); }}
           >
             <option value="all">All assignments</option>
             <option value="unassigned">Unassigned only</option>
@@ -311,14 +327,14 @@ const TicketsPage = ({
             <input
               type="checkbox"
               checked={includeArchived}
-              onChange={(e) => setIncludeArchived(e.target.checked)}
+              onChange={(e) => { setIncludeArchived(e.target.checked); setPage(1); }}
             />
             <span>Show archived</span>
           </label>
         )}
         <select
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
+          onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
         >
           {statusOptions.map((option) => (
             <option key={option || "all"} value={option}>
@@ -328,7 +344,7 @@ const TicketsPage = ({
         </select>
         <select
           value={priorityFilter}
-          onChange={(e) => setPriorityFilter(e.target.value)}
+          onChange={(e) => { setPriorityFilter(e.target.value); setPage(1); }}
         >
           {priorityOptions.map((option) => (
             <option key={option || "all"} value={option}>
@@ -338,7 +354,7 @@ const TicketsPage = ({
         </select>
         <select
           value={categoryFilter}
-          onChange={(e) => setCategoryFilter(e.target.value)}
+          onChange={(e) => { setCategoryFilter(e.target.value); setPage(1); }}
         >
           {categoryOptions.map((option) => (
             <option key={option || "all"} value={option}>
@@ -349,21 +365,19 @@ const TicketsPage = ({
         <input
           type="date"
           value={dateFrom}
-          onChange={(e) => setDateFrom(e.target.value)}
+          onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
           title="Created from"
         />
         <input
           type="date"
           value={dateTo}
-          onChange={(e) => setDateTo(e.target.value)}
+          onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
           title="Created to"
         />
       </div>
-      {isTeamUrgentView && (
-        <div className="urgent-note">
-          Showing top 5 urgent tickets by SLA due time.
-        </div>
-      )}
+      <div className="pagination-info">
+        Showing {displayedTickets.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1}–{(page - 1) * PAGE_SIZE + displayedTickets.length} of {total} tickets (by priority: Escalated → P1 → P2 → P3 → P4, then SLA breach, then newest).
+      </div>
       {canBulkAssign && (
         <div className="bulk-assign-bar">
           <span>{selectedTickets.length} selected</span>
@@ -462,6 +476,29 @@ const TicketsPage = ({
             </div>
           </button>
         ))}
+      </div>
+      <div className="pagination-controls" role="navigation" aria-label="Ticket list pagination">
+        <button
+          type="button"
+          className="btn ghost"
+          disabled={!hasPrev || loading}
+          onClick={() => setPage((p) => Math.max(1, p - 1))}
+          aria-label="Previous 5 tickets"
+        >
+          ← Previous 5
+        </button>
+        <span className="pagination-page" aria-live="polite">
+          Page {page}{total > 0 ? ` of ${Math.ceil(total / PAGE_SIZE)}` : ""}
+        </span>
+        <button
+          type="button"
+          className="btn primary"
+          disabled={!hasNext || loading}
+          onClick={() => setPage((p) => p + 1)}
+          aria-label="Next 5 tickets"
+        >
+          Next 5 →
+        </button>
       </div>
     </div>
   );
