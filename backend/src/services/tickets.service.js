@@ -510,11 +510,11 @@ const TicketsService = {
   },
 
   async listTickets({ query, user }) {
-    const { status, priority, category, assigned_to, unassigned, include_archived, page = 1, limit = 50, q, tags, date_from, date_to } = query;
+    const { status, priority, category, location, assigned_to, unassigned, include_archived, page = 1, limit = 50, q, tags, date_from, date_to } = query;
     const parsedTags = typeof tags === 'string'
       ? tags.split(',').map((tag) => tag.trim()).filter(Boolean)
       : [];
-    const filters = { status, priority, category, q, tags: parsedTags, date_from, date_to };
+    const filters = { status, priority, category, location, q, tags: parsedTags, date_from, date_to };
     if (include_archived !== 'true' && !['Resolved', 'Closed'].includes(status)) {
       filters.exclude_archived = true;
     }

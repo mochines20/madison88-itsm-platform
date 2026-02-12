@@ -97,6 +97,10 @@ const TicketsModel = {
       values.push(filters.category);
       where.push(`category = $${values.length}`);
     }
+    if (filters.location) {
+      values.push(filters.location);
+      where.push(`location = $${values.length}`);
+    }
     if (filters.q) {
       values.push(`%${filters.q}%`);
       const idx = values.length;

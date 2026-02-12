@@ -16,22 +16,27 @@ const AdminDashboard = () => {
     critical_breached: 0,
   });
   const [agentStatusMatrix, setAgentStatusMatrix] = useState([]);
+  const [ticketsByLocation, setTicketsByLocation] = useState([]);
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
     setError("");
     try {
-      const [usersRes, statusRes, slaRes, reportingRes] = await Promise.all([
+      const [usersRes, statusRes, slaRes, reportingRes, volumeRes] = await Promise.all([
         apiClient.get("/users"),
         apiClient.get("/dashboard/status-summary"),
         apiClient.get("/dashboard/sla-summary"),
         apiClient.get("/dashboard/advanced-reporting"),
+        apiClient.get("/dashboard/ticket-volume"),
       ]);
       setUsers(usersRes.data.data.users?.length || 0);
       setStatusSummary(statusRes.data.data.summary || {});
       setSlaSummary(slaRes.data.data.summary || {});
       setAgentStatusMatrix(
         reportingRes.data.data.agent_status_matrix || [],
+      );
+      setTicketsByLocation(
+        volumeRes.data.data.ticket_volume?.by_location || [],
       );
     } catch (err) {
       setError(err.response?.data?.message || "Failed to load dashboard");
@@ -160,6 +165,26 @@ const AdminDashboard = () => {
           <strong>{slaSummary.total_breached || 0}</strong>
           <em>{breachPercent} of total</em>
         </div>
+      </section>
+
+      <section className="panel">
+        <h3>Tickets by Location</h3>
+        <p className="muted">Number of tickets submitted per location.</p>
+        {ticketsByLocation.length === 0 ? (
+          <div className="empty-state">No location data.</div>
+        ) : (
+          <div className="location-cards">
+            {ticketsByLocation.map((item) => (
+              <div key={item.key || "unknown"} className="location-card">
+                <span className="location-label">
+                  {item.key || "Unknown"}
+                </span>
+                <strong>{item.value}</strong>
+                <em>tickets</em>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="panel">

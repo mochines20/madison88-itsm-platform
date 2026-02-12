@@ -37,6 +37,7 @@ const categoryOptions = [
   "Network",
   "Other",
 ];
+const locationOptions = ["", "Philippines", "US", "Indonesia", "Other"];
 
 const PAGE_SIZE = 5;
 
@@ -57,6 +58,7 @@ const TicketsPage = ({
   const [statusFilter, setStatusFilter] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
+  const [locationFilter, setLocationFilter] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [assignmentFilter, setAssignmentFilter] = useState("all");
@@ -103,6 +105,7 @@ const TicketsPage = ({
         if (statusFilter) params.status = statusFilter;
         if (priorityFilter) params.priority = priorityFilter;
         if (categoryFilter) params.category = categoryFilter;
+        if (locationFilter) params.location = locationFilter;
         if (dateFrom) params.date_from = dateFrom;
         if (dateTo) params.date_to = dateTo;
         params.page = page;
@@ -154,6 +157,7 @@ const TicketsPage = ({
     statusFilter,
     priorityFilter,
     categoryFilter,
+    locationFilter,
     dateFrom,
     dateTo,
     bulkRefresh,
@@ -362,6 +366,18 @@ const TicketsPage = ({
             </option>
           ))}
         </select>
+        {(isManager || isAdmin) && (
+          <select
+            value={locationFilter}
+            onChange={(e) => { setLocationFilter(e.target.value); setPage(1); }}
+          >
+            {locationOptions.map((option) => (
+              <option key={option || "all"} value={option}>
+                {option || "All Locations"}
+              </option>
+            ))}
+          </select>
+        )}
         <input
           type="date"
           value={dateFrom}
