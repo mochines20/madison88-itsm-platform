@@ -167,6 +167,38 @@ const AuthController = {
       next(err);
     }
   },
+
+  async logout(req, res, next) {
+    try {
+      // TODO: Implement logout logic (blacklist token, etc.)
+      res.json({
+        status: 'success',
+        message: 'Logout successful'
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async refreshToken(req, res, next) {
+    try {
+      const { refreshToken } = req.body;
+      if (!refreshToken) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Refresh token is required'
+        });
+      }
+
+      const result = await AuthService.refreshToken(refreshToken);
+      res.json({
+        status: 'success',
+        data: result
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
 };
 
 module.exports = AuthController;

@@ -536,7 +536,7 @@ const TicketsService = {
     if (parsedTags.length) filters.tags = parsedTags;
     if (date_from && date_from.trim()) filters.date_from = date_from.trim();
     if (date_to && date_to.trim()) filters.date_to = date_to.trim();
-    
+
     // Handle archived and resolved/closed ticket filtering
     // Only show resolved/closed tickets when:
     // 1. User specifically filters by status = "Resolved" or "Closed", OR
@@ -793,18 +793,18 @@ const TicketsService = {
         const pausedDurationMinutes = Math.floor(pausedDurationMs / 60000);
         const totalPausedMinutes = (existing.sla_paused_duration_minutes || 0) + pausedDurationMinutes;
         value.sla_paused_duration_minutes = totalPausedMinutes;
-        
+
         // Adjust SLA due dates by adding the paused duration
         const originalDueDate = new Date(existing.sla_due_date);
         const adjustedDueDate = new Date(originalDueDate.getTime() + pausedDurationMs);
         value.sla_due_date = adjustedDueDate;
-        
+
         if (existing.sla_response_due) {
           const originalResponseDue = new Date(existing.sla_response_due);
           const adjustedResponseDue = new Date(originalResponseDue.getTime() + pausedDurationMs);
           value.sla_response_due = adjustedResponseDue;
         }
-        
+
         value.sla_paused_at = null;
       }
     }
@@ -917,7 +917,7 @@ const TicketsService = {
   async getComments({ ticketId, user }) {
     const ticket = await TicketsModel.getTicketById(ticketId);
     if (!ticket) throw new AppError('Ticket not found', 404);
-    
+
     // Check permissions
     if (user.role === 'end_user' && ticket.user_id !== user.user_id) {
       throw new AppError('Forbidden', 403);
@@ -940,12 +940,12 @@ const TicketsService = {
         throw new AppError('Forbidden', 403);
       }
     }
-    
+
     const comments = await TicketsModel.getComments(ticketId);
     const visibleComments = user.role === 'end_user'
       ? comments.filter((comment) => !comment.is_internal)
       : comments;
-    
+
     return { comments: visibleComments };
   },
 
@@ -1261,7 +1261,7 @@ const TicketsService = {
       if (assignee.role !== 'it_agent') {
         throw new Error('IT Managers can only assign tickets to IT Agents');
       }
-      
+
       const teamIds = await TicketsModel.listTeamIdsForUser(user.user_id);
       if (!teamIds.length) throw new Error('Forbidden: No teams assigned');
       const memberIds = await TicketsModel.listTeamMemberIdsForTeams(teamIds);
@@ -1458,11 +1458,11 @@ const TicketsService = {
     const results = [];
 
     for (const ticket of candidates) {
-      const pendingAt = ticket.resolution_pending_confirmation_at 
-        ? new Date(ticket.resolution_pending_confirmation_at) 
+      const pendingAt = ticket.resolution_pending_confirmation_at
+        ? new Date(ticket.resolution_pending_confirmation_at)
         : null;
       if (!pendingAt || Number.isNaN(pendingAt.getTime())) continue;
-      
+
       // Check if 2 days (48 hours) have passed
       const daysSincePending = (now - pendingAt) / (1000 * 60 * 60 * 24);
       if (daysSincePending < days) continue;
@@ -1477,12 +1477,12 @@ const TicketsService = {
         user_confirmed_at: null,
         tags: appendTag(ticket.tags, 'auto-closed-no-confirmation'),
       };
-      
+
       // Ensure SLA is paused if it wasn't already
       if (ticket.sla_due_date && !ticket.sla_paused_at) {
         updateData.sla_paused_at = now;
       }
-      
+
       const updated = await TicketsModel.updateTicket(ticket.ticket_id, updateData);
 
       await TicketsModel.createStatusHistory({
@@ -1516,16 +1516,16 @@ const TicketsService = {
   async confirmTicketResolution({ ticketId, user }) {
     const ticket = await TicketsModel.getTicketById(ticketId);
     if (!ticket) throw new AppError('Ticket not found', 404);
-    
+
     if (ticket.user_id !== user.user_id) {
       throw new AppError('Only the ticket requester can confirm resolution', 403);
     }
-    
+
     if (!['Resolved', 'Closed'].includes(ticket.status)) {
       throw new AppError('Ticket must be Resolved or Closed to confirm', 400);
     }
-    
-    if (ticket.user_confirmed_resolution) {
+
+    if (ticket.user_confirmed_resolution && ticket.status === 'Resolved') {
       throw new AppError('Ticket resolution already confirmed', 400);
     }
 
@@ -1566,11 +1566,11 @@ const TicketsService = {
   async reopenTicket({ ticketId, user, reason }) {
     const ticket = await TicketsModel.getTicketById(ticketId);
     if (!ticket) throw new AppError('Ticket not found', 404);
-    
+
     if (ticket.user_id !== user.user_id && !['it_agent', 'it_manager', 'system_admin'].includes(user.role)) {
       throw new AppError('Forbidden', 403);
     }
-    
+
     if (!['Resolved', 'Closed'].includes(ticket.status)) {
       throw new AppError('Ticket must be Resolved or Closed to reopen', 400);
     }
@@ -1597,18 +1597,18 @@ const TicketsService = {
       const pausedDurationMinutes = Math.floor(pausedDurationMs / 60000);
       const totalPausedMinutes = (ticket.sla_paused_duration_minutes || 0) + pausedDurationMinutes;
       updates.sla_paused_duration_minutes = totalPausedMinutes;
-      
+
       // Adjust SLA due dates by adding the paused duration
       const originalDueDate = new Date(ticket.sla_due_date);
       const adjustedDueDate = new Date(originalDueDate.getTime() + pausedDurationMs);
       updates.sla_due_date = adjustedDueDate;
-      
+
       if (ticket.sla_response_due) {
         const originalResponseDue = new Date(ticket.sla_response_due);
         const adjustedResponseDue = new Date(originalResponseDue.getTime() + pausedDurationMs);
         updates.sla_response_due = adjustedResponseDue;
       }
-      
+
       updates.sla_paused_at = null;
     }
 
@@ -1639,7 +1639,7 @@ const TicketsService = {
     // Send notifications
     const requester = await UserModel.findById(ticket.user_id);
     const assignee = ticket.assigned_to ? await UserModel.findById(ticket.assigned_to) : null;
-    
+
     await NotificationService.sendTicketReopenedNotice({
       ticket: updated,
       requester,

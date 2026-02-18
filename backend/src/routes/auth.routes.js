@@ -32,46 +32,13 @@ router.post('/auth0-login', AuthController.loginWithAuth0);
  * @route POST /api/auth/logout
  * @desc Logout user
  */
-router.post('/logout', async (req, res, next) => {
-  try {
-    // TODO: Implement logout logic (blacklist token, etc.)
-
-    res.json({
-      status: 'success',
-      message: 'Logout successful'
-    });
-  } catch (err) {
-    next(err);
-  }
-});
+router.post('/logout', AuthController.logout);
 
 /**
  * @route POST /api/auth/refresh-token
  * @desc Refresh JWT token
  */
-router.post('/refresh-token', async (req, res, next) => {
-  try {
-    const { refreshToken } = req.body;
-
-    if (!refreshToken) {
-      return res.status(400).json({
-        status: 'error',
-        message: 'Refresh token is required'
-      });
-    }
-
-    // TODO: Verify refresh token and generate new access token
-
-    res.json({
-      status: 'success',
-      data: {
-        token: 'new_jwt_token'
-      }
-    });
-  } catch (err) {
-    next(err);
-  }
-});
+router.post('/refresh-token', AuthController.refreshToken);
 
 /**
  * @route GET /api/auth/me

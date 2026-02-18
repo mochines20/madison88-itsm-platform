@@ -57,7 +57,7 @@ const AuthService = {
   async loginWithAuth0({ email, name, sub }) {
     // Find or create user based on Auth0 email
     let user = await UserModel.findByEmail(email);
-    
+
     if (!user) {
       // Auto-create user if doesn't exist (you may want to change this behavior)
       const nameParts = name ? name.split(' ') : ['User', 'Account'];
@@ -68,7 +68,7 @@ const AuthService = {
       // Users table requires PASSWORD_HASH NOT NULL, so generate an unreachable random password hash
       const randomSecret = crypto.randomBytes(32).toString('hex') + (sub ? `:${sub}` : '');
       const passwordHash = await bcrypt.hash(randomSecret, 10);
-      
+
       user = await UserModel.create({
         email,
         first_name,
@@ -99,6 +99,19 @@ const AuthService = {
     );
 
     return { token, user };
+  },
+
+  async refreshToken(refreshToken) {
+    // TODO: Implement actual refresh token verification logic
+    // For now, we'll just return a mock token if a refresh token is provided
+    if (!refreshToken) throw new Error('Refresh token is required');
+
+    // In a real implementation:
+    // 1. Verify refreshToken (check signature, expiration, database whitelist)
+    // 2. Get user from refreshToken
+    // 3. Generate new access token
+
+    return { token: 'new_jwt_token' };
   },
 };
 
