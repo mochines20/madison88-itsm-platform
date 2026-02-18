@@ -47,6 +47,12 @@ router.post('/', authenticate, authorize(['end_user']), TicketsController.create
 router.post('/with-attachments', authenticate, authorize(['end_user']), upload.array('files', 5), TicketsController.createTicketWithAttachments);
 
 /**
+ * @route GET /api/tickets/check-duplicates
+ * @desc Check for potential duplicate tickets in real-time
+ */
+router.get('/check-duplicates', authenticate, TicketsController.checkDuplicates);
+
+/**
  * @route GET /api/tickets
  * @desc List all tickets with filters
  */

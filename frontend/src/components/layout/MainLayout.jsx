@@ -21,6 +21,7 @@ const MainLayout = ({ user, notifications = [], unreadCount = 0, onLogout, onNot
     const navItems = [
         { path: "/", label: "Dashboard" },
         { path: "/tickets", label: isAgent ? "Assigned Tickets" : "Tickets" },
+        ...(isAgent || isManager || isAdmin ? [{ path: "/kanban", label: "Kanban Board" }] : []),
         ...(isManager || isAdmin ? [{ path: "/team-queue", label: "Team Queue" }] : []),
         ...(user?.role === "end_user" ? [{ path: "/new-ticket", label: "New Ticket" }] : []),
         { path: "/knowledge-base", label: "Knowledge Base" },
@@ -55,6 +56,7 @@ const MainLayout = ({ user, notifications = [], unreadCount = 0, onLogout, onNot
         if (currentPath.startsWith("/asset-tracking")) return "Asset Tracking";
         if (currentPath.startsWith("/admin-users")) return "User Management";
         if (currentPath.startsWith("/sla-standards")) return "SLA Standards";
+        if (currentPath.startsWith("/kanban")) return "Kanban Workspace";
         return "Dashboard";
     };
 

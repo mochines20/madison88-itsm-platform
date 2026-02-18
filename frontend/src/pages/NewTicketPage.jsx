@@ -51,6 +51,8 @@ const NewTicketPage = ({ onCreated }) => {
     tags: "",
   });
   const [files, setFiles] = useState([]);
+  const [searchingDuplicates, setSearchingDuplicates] = useState(false);
+  const searchTimeoutRef = useRef(null);
 
   const totalSize = useMemo(
     () => files.reduce((sum, file) => sum + file.size, 0),
@@ -126,6 +128,37 @@ const NewTicketPage = ({ onCreated }) => {
       }
     }
   }, [templates]); // Trigger when templates array is populated
+
+  useEffect(() => {
+    if (form.title.trim().length < 4) {
+      setDuplicates([]);
+      return;
+    }
+
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    searchTimeoutRef.current = setTimeout(async () => {
+      setSearchingDuplicates(true);
+      try {
+        const res = await apiClient.get("/tickets/check-duplicates", {
+          params: { title: form.title.trim() }
+        });
+        setDuplicates(res.data.data.duplicates || []);
+      } catch (err) {
+        console.error("Duplicate check failed", err);
+      } finally {
+        setSearchingDuplicates(false);
+      }
+    }, 600);
+
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [form.title]);
 
   const validateIssueDetails = () => {
     const title = form.title.trim();
@@ -405,12 +438,41 @@ const NewTicketPage = ({ onCreated }) => {
             })()}
           </label>
           <label className="field">
-            <span>Ticket Title</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>Ticket Title</span>
+              {searchingDuplicates && <small className="muted" style={{ fontSize: '10px' }}>Checking for duplicates...</small>}
+            </div>
             <input
               value={form.title}
               onChange={(e) => setForm({ ...form, title: e.target.value })}
               placeholder="Brief summary of the issue"
             />
+            {duplicates.length > 0 && (
+              <div className="duplicates-suggestion" style={{
+                marginTop: '8px',
+                background: 'rgba(255, 215, 0, 0.05)',
+                border: '1px solid rgba(255, 215, 0, 0.2)',
+                borderRadius: '12px',
+                padding: '12px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', color: '#ffd700', fontSize: '12px', fontWeight: '700' }}>
+                  <span style={{ fontSize: '16px' }}>⚠</span>
+                  <span>SIMILAR TICKETS FOUND</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {duplicates.map(dup => (
+                    <div key={dup.ticket_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: 'var(--slate-300)', padding: '4px 0' }}>
+                      <span style={{ fontWeight: '600', color: 'var(--cyan-300)' }}>{dup.ticket_number}</span>
+                      <span style={{ flex: 1, margin: '0 8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{dup.title}</span>
+                      <span className={`status-pill ${dup.status.toLowerCase().replace(' ', '-')}`} style={{ fontSize: '9px', padding: '2px 8px' }}>{dup.status}</span>
+                    </div>
+                  ))}
+                </div>
+                <p style={{ fontSize: '10px', color: 'var(--slate-500)', marginTop: '8px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '8px' }}>
+                  Please check if your issue is already being handled to avoid duplicate tickets.
+                </p>
+              </div>
+            )}
           </label>
           <label className="field">
             <span>Category</span>

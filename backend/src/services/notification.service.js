@@ -280,6 +280,37 @@ async function sendTicketReopenedNotice({ ticket, requester, assignee, reopenedB
   return sendEmail({ to: uniqueRecipients.join(','), subject, text });
 }
 
+async function sendCriticalTicketNotice({ ticket, requester, recipients }) {
+  const uniqueRecipients = collectRecipientEmails(recipients);
+  if (!uniqueRecipients.length) return false;
+
+  const subject = `🔥 CRITICAL ALERT: ${ticket.ticket_number} - ${ticket.title}`;
+  const text = [
+    `URGENT: A P1 (Critical) ticket has been opened and requires IMMEDIATE attention.`,
+    `--------------------------------------------------`,
+    `Ticket ID: ${ticket.ticket_number}`,
+    `Subject: ${ticket.title}`,
+    `Category: ${ticket.category}`,
+    `Location: ${ticket.location}`,
+    requester?.full_name ? `Requester: ${requester.full_name}` : null,
+    `--------------------------------------------------`,
+    `Description:`,
+    ticket.description,
+    `--------------------------------------------------`,
+    `Please log in to the Madison88 ITSM Platform to begin resolution.`,
+  ].filter(Boolean).join('\n');
+
+  return sendEmail({
+    to: uniqueRecipients.join(','),
+    subject,
+    text,
+    templateParams: {
+      is_critical: true,
+      priority: 'P1'
+    }
+  });
+}
+
 module.exports = {
   sendEmail,
   sendEscalationNotice,
@@ -288,4 +319,5 @@ module.exports = {
   sendNewTicketNotice,
   sendTicketAssignedNotice,
   sendTicketReopenedNotice,
+  sendCriticalTicketNotice,
 };

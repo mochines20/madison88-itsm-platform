@@ -371,6 +371,18 @@ const TicketsController = {
       next(err);
     }
   },
+  async checkDuplicates(req, res, next) {
+    try {
+      const result = await TicketsService.checkDuplicates({
+        title: req.query.title,
+        description: req.query.description,
+        user: req.user,
+      });
+      res.json({ status: 'success', data: result });
+    } catch (err) {
+      next(err);
+    }
+  },
 };
 
 module.exports = TicketsController;

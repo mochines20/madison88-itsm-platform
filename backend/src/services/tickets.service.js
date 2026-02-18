@@ -129,8 +129,15 @@ function mapPriorityToSeverity(priority) {
   }
 }
 
-async function buildSla(priority) {
-  const rule = await TicketsModel.getSlaRule(priority);
+async function buildSla(priority, category) {
+  // 1. Try to find a rule matching both priority AND category
+  let rule = await TicketsModel.getSlaRule(priority, category);
+
+  // 2. Fallback to priority-only rule (where category is NULL)
+  if (!rule && category) {
+    rule = await TicketsModel.getSlaRule(priority, null);
+  }
+
   const now = new Date();
   const responseHours = rule ? rule.response_time_hours : DEFAULT_RESPONSE_HOURS;
   const resolutionHours = rule ? rule.resolution_time_hours : DEFAULT_RESOLUTION_HOURS;
@@ -138,7 +145,9 @@ async function buildSla(priority) {
   const responseDue = SlaUtils.addBusinessHours(now, responseHours);
   const resolutionDue = SlaUtils.addBusinessHours(now, resolutionHours);
 
-  return { sla_due_date: resolutionDue, sla_response_due: responseDue };
+  const escalation_threshold_percent = rule ? rule.escalation_threshold_percent : 100;
+
+  return { sla_due_date: resolutionDue, sla_response_due: responseDue, escalation_threshold_percent };
 }
 
 async function generateTicketNumber() {
@@ -181,12 +190,14 @@ const TicketsService = {
       role: user.role,
     });
 
-    const sla = await buildSla(priority);
     const routingRule = await TicketsModel.getRoutingRule({
       category: value.category,
       subcategory: value.subcategory,
       location: value.location,
     });
+
+    const finalPriority = routingRule?.priority_override || priority;
+    const sla = await buildSla(finalPriority, value.category);
 
     const assigned_team = routingRule?.assigned_team || null;
     let assigned_to = null;
@@ -287,6 +298,19 @@ const TicketsService = {
     const adminEmailRecipients = adminEmailOverride
       ? [{ email: adminEmailOverride }]
       : adminUsers;
+
+    if (ticket.priority === 'P1') {
+      const teamLeadId = await TicketsModel.getTeamLeadIdByTeamId(ticket.assigned_team);
+      const teamMemberIds = await TicketsModel.listTeamMemberIdsForTeams(ticket.assigned_team ? [ticket.assigned_team] : []);
+      const recipientIds = Array.from(new Set([teamLeadId, ...teamMemberIds].filter(Boolean)));
+      const recipients = await UserModel.listUsersByIds(recipientIds);
+
+      await NotificationService.sendCriticalTicketNotice({
+        ticket,
+        requester: requester,
+        recipients,
+      });
+    }
 
     await NotificationService.sendNewTicketNotice({
       ticket,
@@ -1652,6 +1676,16 @@ const TicketsService = {
     }
 
     return { ticket: updated };
+  },
+  async checkDuplicates({ title, description, user }) {
+    const createdAfter = new Date(Date.now() - DUPLICATE_CHECK_HOURS * 60 * 60 * 1000);
+    const duplicates = await TicketsModel.findPotentialDuplicates({
+      title,
+      description,
+      userId: user.user_id,
+      createdAfter,
+    });
+    return { duplicates };
   },
 };
 

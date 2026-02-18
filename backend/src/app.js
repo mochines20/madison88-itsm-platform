@@ -71,7 +71,7 @@ app.use('/api/tickets', require('./routes/tickets.routes'));
 app.use('/api/dashboard', require('./routes/dashboard.routes'));
 app.use('/api/kb', require('./routes/knowledgebase.routes'));
 app.use('/api/users', require('./routes/users.routes'));
-app.use('/api/sla-rules', require('./routes/sla.routes'));
+app.use('/api/sla-governance', require('./routes/sla.routes'));
 app.use('/api/bi', require('./routes/bi.routes'));
 app.use('/api/audit', require('./routes/audit.routes'));
 app.use('/api/ticket-templates', require('./routes/ticket-templates.routes'));

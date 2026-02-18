@@ -19,6 +19,7 @@ import UserDashboard from "./pages/dashboards/UserDashboard";
 import AgentDashboard from "./pages/dashboards/AgentDashboard";
 import ManagerDashboard from "./pages/dashboards/ManagerDashboard";
 import AdminDashboard from "./pages/dashboards/AdminDashboard";
+import KanbanPage from "./pages/KanbanPage";
 
 function App() {
   const { logout: auth0Logout, isAuthenticated, isLoading: auth0Loading, user: auth0User, getAccessTokenSilently } = useAuth0();
@@ -340,6 +341,7 @@ function App() {
           <Route path="/asset-tracking" element={<AssetsPage user={user} />} />
           <Route path="/admin-users" element={<AdminUsersPage />} />
           <Route path="/sla-standards" element={<AdminSlaPage />} />
+          <Route path="/kanban" element={<KanbanPage user={user} />} />
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

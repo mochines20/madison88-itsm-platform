@@ -9,8 +9,12 @@ const TicketsModel = {
     return result.rows[0]?.ticket_number || null;
   },
 
-  async getSlaRule(priority) {
-    const result = await db.query('SELECT * FROM sla_rules WHERE priority = $1 AND is_active = true', [priority]);
+  async getSlaRule(priority, category = null) {
+    const query = category
+      ? 'SELECT * FROM sla_rules WHERE priority = $1 AND category = $2 AND is_active = true'
+      : 'SELECT * FROM sla_rules WHERE priority = $1 AND category IS NULL AND is_active = true';
+    const params = category ? [priority, category] : [priority];
+    const result = await db.query(query, params);
     return result.rows[0];
   },
 
