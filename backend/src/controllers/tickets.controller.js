@@ -2,10 +2,20 @@ const TicketsService = require('../services/tickets.service');
 
 const IDEMPOTENCY_TTL_SEC = 24 * 60 * 60; // 24 hours
 
-function emitTicketUpdate(io, ticketId, event = 'ticket-updated', payload = null) {
+function emitTicketUpdate(io, ticketId, event = 'ticket-updated', payload = null, isInternal = false) {
   if (!io) return;
   try {
-    io.to(`ticket-${ticketId}`).emit(event, payload || { ticketId });
+    const publicRoom = `ticket-${ticketId}-public`;
+    const staffRoom = `ticket-${ticketId}-staff`;
+
+    if (isInternal) {
+      // Internal updates only go to the staff room
+      io.to(staffRoom).emit(event, payload || { ticketId });
+    } else {
+      // Public updates go to the public room (which staff also joined)
+      io.to(publicRoom).emit(event, payload || { ticketId });
+    }
+
     io.emit('dashboard-refresh', { ticketId });
   } catch {
     // ignore
@@ -200,7 +210,13 @@ const TicketsController = {
         },
       });
       const io = req.app.get('io');
-      emitTicketUpdate(io, req.params.id, 'ticket-comment', { ticketId: req.params.id, comment: result.comment });
+      emitTicketUpdate(
+        io,
+        req.params.id,
+        'ticket-comment',
+        { ticketId: req.params.id, comment: result.comment },
+        result.comment.is_internal
+      );
       res.status(201).json({ status: 'success', data: result });
     } catch (err) {
       next(err);

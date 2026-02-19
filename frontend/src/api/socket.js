@@ -28,10 +28,10 @@ export function onDashboardRefresh(onRefresh) {
 /**
  * Subscribe to ticket-specific updates when viewing a ticket.
  */
-export function subscribeTicket(ticketId, onUpdate) {
+export function subscribeTicket(ticketId, onUpdate, user = null) {
   const s = getSocket();
   if (!s || !ticketId) return () => { };
-  s.emit("subscribe-ticket", ticketId);
+  s.emit("subscribe-ticket", { ticketId, user });
   const handler = (payload) => onUpdate(payload);
   s.on("ticket-updated", handler);
   s.on("ticket-created", handler);

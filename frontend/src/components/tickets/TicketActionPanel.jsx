@@ -564,7 +564,7 @@ const TicketActionPanel = ({ ticket, user, onUpdate }) => {
             width: 100%;
             background: rgba(0,0,0,0.3);
             border: 1px solid rgba(255,255,255,0.08);
-            padding: 0.8rem 1rem;
+            padding: 0.8rem 7.5rem 0.8rem 1rem;
             border-radius: 10px;
             color: #f8fafc;
             font-size: 0.95rem;

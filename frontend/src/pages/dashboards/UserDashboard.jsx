@@ -384,6 +384,21 @@ const UserDashboard = () => {
 
         .spinner-mini { width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.1); border-top-color: #3b82f6; border-radius: 50%; animation: spin 0.8s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
+
+        @media (max-width: 1024px) {
+          .user-portal { padding: 1rem; }
+          .quick-actions-grid { grid-template-columns: repeat(2, 1fr); gap: 1rem; }
+          .portal-main-grid { grid-template-columns: 1fr; }
+          .hero-section { padding: 3rem 1.5rem; }
+          .hero-section h1 { font-size: 2rem; }
+        }
+
+        @media (max-width: 768px) {
+          .quick-actions-grid { grid-template-columns: 1fr; }
+          .hero-section h1 { font-size: 1.5rem; }
+          .step-point .label { font-size: 0.65rem; }
+          .timeline-visual { padding: 0; }
+        }
       `}</style>
     </div>
   );

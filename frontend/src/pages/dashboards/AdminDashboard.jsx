@@ -20,6 +20,7 @@ const AdminDashboard = () => {
   });
   const [agentStatusMatrix, setAgentStatusMatrix] = useState([]);
   const [ticketsByLocation, setTicketsByLocation] = useState([]);
+  const [ticketsByPriority, setTicketsByPriority] = useState([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
@@ -55,6 +56,20 @@ const AdminDashboard = () => {
       setTicketsByLocation(
         volumeRes.data.data.ticket_volume?.by_location || [],
       );
+
+      // Normalize priority data to ensure P1-P4 are always present
+      const priorityRaw = volumeRes.data.data.ticket_volume?.by_priority || [];
+      const priorityMap = priorityRaw.reduce((acc, item) => {
+        acc[item.key] = item.value;
+        return acc;
+      }, {});
+
+      const normalizedPriority = ['P1', 'P2', 'P3', 'P4'].map(p => ({
+        key: p,
+        value: priorityMap[p] || 0
+      }));
+      setTicketsByPriority(normalizedPriority);
+
     } catch (err) {
       setError(err.response?.data?.message || "Failed to load dashboard");
     } finally {
@@ -212,6 +227,27 @@ const AdminDashboard = () => {
           <span className="status-pill">Total SLA Breached</span>
           <strong>{slaSummary.total_breached || 0}</strong>
           <em>{breachPercent} of total</em>
+        </div>
+      </section>
+
+      <section className="panel">
+        <h3>Tickets by Priority</h3>
+        <p className="muted">Total ticket distribution across priority levels.</p>
+        <div className="location-cards">
+          {ticketsByPriority.map((item) => (
+            <div
+              key={item.key}
+              className={`location-card hover-lift priority-${item.key.toLowerCase()}`}
+              style={{ cursor: 'pointer', borderLeft: `3px solid var(--p-${item.key.toLowerCase()}-color, #3b82f6)` }}
+              onClick={() => handleDrillDown({ priority: item.key })}
+            >
+              <span className="location-label">
+                {item.key} TICKETS
+              </span>
+              {loading ? <div className="skeleton-shimmer" style={{ height: '24px', width: '40px', marginTop: '4px' }} /> : <strong>{item.value}</strong>}
+              {loading ? <div className="skeleton-shimmer" style={{ height: '12px', width: '60px', marginTop: '2px' }} /> : <em>{formatPercent(item.value, totalTickets)}</em>}
+            </div>
+          ))}
         </div>
       </section>
 

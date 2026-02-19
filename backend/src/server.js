@@ -35,7 +35,13 @@ io.on('connection', (socket) => {
   socket.on('join-ticket', ({ ticketId, user }) => {
     if (!ticketId || !user) return;
 
-    socket.join(`ticket-${ticketId}`);
+    const publicRoom = `ticket-${ticketId}-public`;
+    const staffRoom = `ticket-${ticketId}-staff`;
+
+    socket.join(publicRoom);
+    if (['it_agent', 'it_manager', 'system_admin'].includes(user.role)) {
+      socket.join(staffRoom);
+    }
 
     // Store user info for cleanup on disconnect
     socketUserData.set(socket.id, { ticketId, user });
@@ -48,21 +54,28 @@ io.on('connection', (socket) => {
     viewers.set(user.user_id, {
       user_id: user.user_id,
       full_name: user.full_name,
+      role: user.role,
       socket_id: socket.id
     });
 
-    // Notify everyone in the room (including joiner) of the current viewers
-    io.to(`ticket-${ticketId}`).emit('presence-update', {
+    // Notify everyone in the rooms of the current viewers
+    // We emit to public room, which staff also joined
+    io.to(publicRoom).emit('presence-update', {
       ticketId,
       viewers: Array.from(viewers.values())
     });
 
-    logger.info(`User ${user.full_name} joined ticket ${ticketId}`);
+    logger.info(`User ${user.full_name} (${user.role}) joined ticket ${ticketId}`);
   });
 
   socket.on('leave-ticket', (ticketId) => {
-    socket.leave(`ticket-${ticketId}`);
     const data = socketUserData.get(socket.id);
+    const publicRoom = `ticket-${ticketId}-public`;
+    const staffRoom = `ticket-${ticketId}-staff`;
+
+    socket.leave(publicRoom);
+    socket.leave(staffRoom);
+
     if (!data || data.ticketId !== ticketId) return;
 
     const { user } = data;
@@ -72,7 +85,7 @@ io.on('connection', (socket) => {
       if (viewers.size === 0) {
         ticketViewers.delete(ticketId);
       } else {
-        io.to(`ticket-${ticketId}`).emit('presence-update', {
+        io.to(publicRoom).emit('presence-update', {
           ticketId,
           viewers: Array.from(viewers.values())
         });
@@ -85,13 +98,14 @@ io.on('connection', (socket) => {
     const data = socketUserData.get(socket.id);
     if (data) {
       const { ticketId, user } = data;
+      const publicRoom = `ticket-${ticketId}-public`;
       const viewers = ticketViewers.get(ticketId);
       if (viewers) {
         viewers.delete(user.user_id);
         if (viewers.size === 0) {
           ticketViewers.delete(ticketId);
         } else {
-          io.to(`ticket-${ticketId}`).emit('presence-update', {
+          io.to(publicRoom).emit('presence-update', {
             ticketId,
             viewers: Array.from(viewers.values())
           });
@@ -102,13 +116,24 @@ io.on('connection', (socket) => {
     logger.info(`User disconnected: ${socket.id}`);
   });
 
-  socket.on('subscribe-ticket', (ticketId) => {
-    socket.join(`ticket-${ticketId}`);
-    logger.info(`User subscribed to ticket ${ticketId}`);
+  socket.on('subscribe-ticket', ({ ticketId, user }) => {
+    if (!ticketId) return;
+
+    const publicRoom = `ticket-${ticketId}-public`;
+    const staffRoom = `ticket-${ticketId}-staff`;
+
+    socket.join(publicRoom);
+    if (user && ['it_agent', 'it_manager', 'system_admin'].includes(user.role)) {
+      socket.join(staffRoom);
+      logger.info(`User subscribed to STAFF room for ticket ${ticketId}`);
+    } else {
+      logger.info(`User subscribed to PUBLIC room for ticket ${ticketId}`);
+    }
   });
 
   socket.on('unsubscribe-ticket', (ticketId) => {
-    socket.leave(`ticket-${ticketId}`);
+    socket.leave(`ticket-${ticketId}-public`);
+    socket.leave(`ticket-${ticketId}-staff`);
   });
 });
 

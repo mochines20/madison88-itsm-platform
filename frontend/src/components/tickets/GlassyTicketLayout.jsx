@@ -1,7 +1,8 @@
-import React from "react";
+import React, { useState } from "react";
 import TicketContextPanel from "./TicketContextPanel";
 import TicketConversation from "./TicketConversation";
 import TicketActionPanel from "./TicketActionPanel";
+import AuditLogModal from "./AuditLogModal";
 
 const GlassyTicketLayout = ({
     ticket,
@@ -13,6 +14,8 @@ const GlassyTicketLayout = ({
     onTicketUpdated,
     onClose
 }) => {
+    const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
+
     return (
         <div className="glassy-workspace animate-fade-in">
             <div className="workspace-header">
@@ -21,6 +24,12 @@ const GlassyTicketLayout = ({
                     <span className="breadcrumb">{ticket.ticket_number} <strong>{ticket.title}</strong></span>
                 </div>
                 <div className="header-right">
+                    <button
+                        className="header-action-btn"
+                        onClick={() => setIsAuditModalOpen(true)}
+                    >
+                        TICKET LOG
+                    </button>
                     <span className={`status-pill ${ticket.status.toLowerCase().replace(' ', '-')}`}>
                         {ticket.status.toUpperCase()}
                     </span>
@@ -53,6 +62,13 @@ const GlassyTicketLayout = ({
                 </div>
             </div>
 
+            <AuditLogModal
+                isOpen={isAuditModalOpen}
+                onClose={() => setIsAuditModalOpen(false)}
+                audit={audit}
+                user={user}
+            />
+
             <style>{`
         .glassy-workspace {
             display: flex;
@@ -75,6 +91,31 @@ const GlassyTicketLayout = ({
             background: rgba(15, 23, 42, 0.6);
             backdrop-filter: blur(20px);
             z-index: 10;
+        }
+
+        .header-left, .header-right {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .header-action-btn {
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid rgba(59, 130, 246, 0.2);
+            color: #60a5fa;
+            font-size: 0.65rem;
+            font-weight: 900;
+            padding: 0.4rem 0.8rem;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            letter-spacing: 0.05em;
+        }
+        .header-action-btn:hover {
+            background: rgba(59, 130, 246, 0.2);
+            border-color: #3b82f6;
+            color: white;
+            transform: translateY(-1px);
         }
 
         .workspace-grid {
@@ -104,7 +145,7 @@ const GlassyTicketLayout = ({
             font-weight: 600;
             font-size: 0.75rem;
             cursor: pointer;
-            margin-right: 1.5rem;
+            margin-right: 0.5rem;
             padding: 0.4rem 0.8rem;
             border-radius: 6px;
             transition: all 0.2s;

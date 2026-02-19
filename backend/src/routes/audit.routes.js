@@ -102,12 +102,13 @@ router.get('/export', authenticate, authorize(['it_manager', 'system_admin']), a
         'User',
       ];
 
-      const columnWidths = [100, 100, 90, 90, 280, 120];
-      const rowHeight = 16;
+      // Optimized for A4 Landscape (approx 770pt usable width)
+      const columnWidths = [125, 90, 75, 75, 305, 100];
       const startX = doc.x;
       let y = doc.y;
 
-      doc.fontSize(10).fillColor('#111111');
+      // Draw Headers
+      doc.fontSize(10).fillColor('#111111').font('Helvetica-Bold');
       headers.forEach((header, index) => {
         doc.text(header, startX + columnWidths.slice(0, index).reduce((a, b) => a + b, 0), y, {
           width: columnWidths[index],
@@ -115,10 +116,10 @@ router.get('/export', authenticate, authorize(['it_manager', 'system_admin']), a
         });
       });
 
-      y += rowHeight;
-      doc.moveTo(startX, y - 4).lineTo(startX + columnWidths.reduce((a, b) => a + b, 0), y - 4).strokeColor('#cccccc').stroke();
+      y += 20;
+      doc.moveTo(startX, y - 4).lineTo(startX + columnWidths.reduce((a, b) => a + b, 0), y - 4).strokeColor('#333333').lineWidth(1).stroke();
 
-      doc.fontSize(9).fillColor('#222222');
+      doc.fontSize(9).fillColor('#222222').font('Helvetica');
       for (const row of result.rows) {
         const values = [
           row.timestamp ? new Date(row.timestamp).toISOString() : '',
@@ -129,19 +130,44 @@ router.get('/export', authenticate, authorize(['it_manager', 'system_admin']), a
           row.full_name || '',
         ];
 
-        if (y + rowHeight > doc.page.height - doc.page.margins.bottom) {
+        // Calculate required height for this row (based on wrapping columns)
+        const rowHeights = values.map((val, idx) => doc.heightOfString(val, { width: columnWidths[idx] }));
+        const maxHeight = Math.max(...rowHeights) + 12; // Add padding
+
+        // Page break check
+        if (y + maxHeight > doc.page.height - doc.page.margins.bottom) {
           doc.addPage();
           y = doc.page.margins.top;
+
+          // Redraw headers on new page
+          doc.fontSize(10).fillColor('#111111').font('Helvetica-Bold');
+          headers.forEach((header, index) => {
+            doc.text(header, startX + columnWidths.slice(0, index).reduce((a, b) => a + b, 0), y, {
+              width: columnWidths[index],
+              align: 'left',
+            });
+          });
+          y += 20;
+          doc.moveTo(startX, y - 4).lineTo(startX + columnWidths.reduce((a, b) => a + b, 0), y - 4).strokeColor('#333333').lineWidth(1).stroke();
+          doc.fontSize(9).fillColor('#222222').font('Helvetica');
         }
 
+        // Render row data
         values.forEach((value, index) => {
           doc.text(value, startX + columnWidths.slice(0, index).reduce((a, b) => a + b, 0), y, {
             width: columnWidths[index],
             align: 'left',
-            ellipsis: true,
           });
         });
-        y += rowHeight;
+
+        y += maxHeight;
+
+        // Horizontal line between rows
+        doc.moveTo(startX, y - 4)
+          .lineTo(startX + columnWidths.reduce((a, b) => a + b, 0), y - 4)
+          .strokeColor('#eeeeee')
+          .lineWidth(0.5)
+          .stroke();
       }
 
       doc.end();
