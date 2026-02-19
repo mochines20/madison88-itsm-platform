@@ -69,19 +69,23 @@ const TicketsModel = {
     return result.rows[0];
   },
 
-  async getLeastLoadedAgent(teamId) {
+  async getLeastLoadedAgent(teamId, location = null) {
     // teamId determines agent scope via team membership
+    // If location is provided, we prioritize agents in that location
     const result = await db.query(
-      `SELECT tm.user_id, COUNT(t.ticket_id) AS open_count
+      `SELECT tm.user_id, COUNT(t.ticket_id) AS open_count, u.location
        FROM team_members tm
+       JOIN users u ON u.user_id = tm.user_id
        LEFT JOIN tickets t
          ON t.assigned_to = tm.user_id
         AND t.status NOT IN ('Resolved', 'Closed')
        WHERE tm.team_id = $1 AND tm.is_active = true
-       GROUP BY tm.user_id
-       ORDER BY open_count ASC
+       GROUP BY tm.user_id, u.location
+       ORDER BY 
+         CASE WHEN u.location = $2 THEN 0 ELSE 1 END,
+         open_count ASC
        LIMIT 1`,
-      [teamId]
+      [teamId, location]
     );
     return result.rows[0]?.user_id || null;
   },
@@ -91,61 +95,71 @@ const TicketsModel = {
     const values = [];
 
     if (filters.status) {
-      values.push(filters.status);
-      where.push(`status = $${values.length}`);
+      if (Array.isArray(filters.status)) {
+        values.push(filters.status);
+        where.push(`t.status = ANY($${values.length})`);
+      } else if (filters.status.trim()) {
+        values.push(filters.status.trim());
+        where.push(`t.status = $${values.length}`);
+      }
     }
     if (filters.priority) {
-      values.push(filters.priority);
-      where.push(`priority = $${values.length}`);
+      if (Array.isArray(filters.priority)) {
+        values.push(filters.priority);
+        where.push(`t.priority = ANY($${values.length})`);
+      } else if (filters.priority.trim()) {
+        values.push(filters.priority.trim());
+        where.push(`t.priority = $${values.length}`);
+      }
     }
     if (filters.category) {
       values.push(filters.category);
-      where.push(`category = $${values.length}`);
+      where.push(`t.category = $${values.length}`);
     }
     if (filters.location) {
       values.push(filters.location);
-      where.push(`location = $${values.length}`);
+      where.push(`t.location = $${values.length}`);
     }
     if (filters.ticket_type) {
       values.push(filters.ticket_type);
-      where.push(`ticket_type = $${values.length}`);
+      where.push(`t.ticket_type = $${values.length}`);
     }
     if (filters.q) {
       values.push(`%${filters.q}%`);
       const idx = values.length;
       where.push(
-        `(title ILIKE $${idx} OR description ILIKE $${idx} OR ticket_number ILIKE $${idx} OR COALESCE(tags, '') ILIKE $${idx})`
+        `(t.title ILIKE $${idx} OR t.description ILIKE $${idx} OR t.ticket_number ILIKE $${idx} OR COALESCE(t.tags, '') ILIKE $${idx})`
       );
     }
     if (filters.tags && filters.tags.length) {
       for (const tag of filters.tags) {
         values.push(`%${tag}%`);
-        where.push(`COALESCE(tags, '') ILIKE $${values.length}`);
+        where.push(`COALESCE(t.tags, '') ILIKE $${values.length}`);
       }
     }
     if (filters.date_from) {
       values.push(filters.date_from);
-      where.push(`created_at >= $${values.length}`);
+      where.push(`t.created_at >= $${values.length}`);
     }
     if (filters.date_to) {
       values.push(filters.date_to);
-      where.push(`created_at <= $${values.length}`);
+      where.push(`t.created_at <= $${values.length}`);
     }
     if (filters.assigned_to) {
       values.push(filters.assigned_to);
-      where.push(`assigned_to = $${values.length}`);
+      where.push(`t.assigned_to = $${values.length}`);
     }
     if (filters.assigned_to_is_null) {
-      where.push('assigned_to IS NULL');
+      where.push('t.assigned_to IS NULL');
     }
     if (filters.exclude_archived) {
       if (filters.include_resolved_closed) {
         // For IT staff: exclude archived active tickets, but include resolved/closed even if archived
-        where.push("((is_archived IS NULL OR is_archived = false) AND status NOT IN ('Resolved', 'Closed')) OR (status IN ('Resolved', 'Closed'))");
+        where.push("((t.is_archived IS NULL OR t.is_archived = false) AND t.status NOT IN ('Resolved', 'Closed')) OR (t.status IN ('Resolved', 'Closed'))");
       } else {
         // Default: exclude archived and exclude Resolved/Closed
-        where.push('(is_archived IS NULL OR is_archived = false)');
-        where.push("status NOT IN ('Resolved', 'Closed')");
+        where.push('(t.is_archived IS NULL OR t.is_archived = false)');
+        where.push("t.status NOT IN ('Resolved', 'Closed')");
       }
     }
     const hasTeamIds = filters.assigned_team_ids && filters.assigned_team_ids.length;
@@ -155,26 +169,26 @@ const TicketsModel = {
       const teamIdx = values.length;
       values.push(filters.assigned_to_in);
       const memberIdx = values.length;
-      where.push(`(assigned_team = ANY($${teamIdx}) OR assigned_to = ANY($${memberIdx}))`);
+      where.push(`(t.assigned_team = ANY($${teamIdx}) OR t.assigned_to = ANY($${memberIdx}))`);
     } else {
       if (hasTeamIds) {
         values.push(filters.assigned_team_ids);
-        where.push(`assigned_team = ANY($${values.length})`);
+        where.push(`t.assigned_team = ANY($${values.length})`);
       }
       if (hasMemberIds) {
         values.push(filters.assigned_to_in);
-        where.push(`assigned_to = ANY($${values.length})`);
+        where.push(`t.assigned_to = ANY($${values.length})`);
       }
     }
     if (filters.user_id) {
       values.push(filters.user_id);
-      where.push(`user_id = $${values.length}`);
+      where.push(`t.user_id = $${values.length}`);
     }
 
     const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const offset = (pagination.page - 1) * pagination.limit;
 
-    const countResult = await db.query(`SELECT COUNT(*) FROM tickets ${whereClause}`, values);
+    const countResult = await db.query(`SELECT COUNT(*) FROM tickets t ${whereClause}`, values);
     const total = parseInt(countResult.rows[0].count, 10);
 
     values.push(pagination.limit, offset);
@@ -185,7 +199,17 @@ const TicketsModel = {
       'tickets.created_at DESC',
     ].join(', ');
     const result = await db.query(
-      `SELECT * FROM tickets ${whereClause} ORDER BY ${orderBy} LIMIT $${values.length - 1} OFFSET $${values.length}`,
+      `SELECT t.*, 
+              u.full_name AS user_name, 
+              u.email AS user_email,
+              a.full_name AS assignee_name,
+              a.email AS assignee_email
+       FROM tickets t
+       LEFT JOIN users u ON u.user_id = t.user_id
+       LEFT JOIN users a ON a.user_id = t.assigned_to
+       ${whereClause} 
+       ORDER BY ${orderBy.replace(/tickets\./g, 't.')} 
+       LIMIT $${values.length - 1} OFFSET $${values.length}`,
       values
     );
 
@@ -196,7 +220,18 @@ const TicketsModel = {
   },
 
   async getTicketById(ticketId) {
-    const result = await db.query('SELECT * FROM tickets WHERE ticket_id = $1', [ticketId]);
+    const result = await db.query(
+      `SELECT t.*, 
+              u.full_name AS user_name, 
+              u.email AS user_email,
+              a.full_name AS assignee_name,
+              a.email AS assignee_email
+       FROM tickets t
+       LEFT JOIN users u ON u.user_id = t.user_id
+       LEFT JOIN users a ON a.user_id = t.assigned_to
+       WHERE t.ticket_id = $1`,
+      [ticketId]
+    );
     return result.rows[0];
   },
 
@@ -469,6 +504,30 @@ const TicketsModel = {
   async deleteTicket(ticketId) {
     const result = await db.query('DELETE FROM tickets WHERE ticket_id = $1 RETURNING ticket_id', [ticketId]);
     return result.rows[0];
+  },
+
+  async addMemberToTeam(userId, teamId) {
+    const result = await db.query(
+      'INSERT INTO team_members (team_id, user_id, is_active) VALUES ($1, $2, true) ON CONFLICT (team_id, user_id) DO UPDATE SET is_active = true RETURNING *',
+      [teamId, userId]
+    );
+    return result.rows[0];
+  },
+
+  async listTeamsByLead(leadId) {
+    const result = await db.query(
+      'SELECT * FROM teams WHERE team_lead_id = $1',
+      [leadId]
+    );
+    return result.rows;
+  },
+
+  async listTeamsByLocation(location) {
+    const result = await db.query(
+      'SELECT * FROM teams WHERE location = $1',
+      [location]
+    );
+    return result.rows;
   },
 };
 

@@ -20,6 +20,7 @@ import AgentDashboard from "./pages/dashboards/AgentDashboard";
 import ManagerDashboard from "./pages/dashboards/ManagerDashboard";
 import AdminDashboard from "./pages/dashboards/AdminDashboard";
 import KanbanPage from "./pages/KanbanPage";
+import ProfilePage from "./pages/ProfilePage";
 
 function App() {
   const { logout: auth0Logout, isAuthenticated, isLoading: auth0Loading, user: auth0User, getAccessTokenSilently } = useAuth0();
@@ -342,6 +343,10 @@ function App() {
           <Route path="/admin-users" element={<AdminUsersPage />} />
           <Route path="/sla-standards" element={<AdminSlaPage />} />
           <Route path="/kanban" element={<KanbanPage user={user} />} />
+          <Route path="/profile" element={<ProfilePage user={user} onUserUpdate={(updated) => {
+            setUser(updated);
+            localStorage.setItem("user", JSON.stringify(updated));
+          }} />} />
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

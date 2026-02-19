@@ -1,77 +1,74 @@
 const db = require('../config/database');
 
 const DashboardService = {
-    async getSlaPerformance() {
+    async getSlaPerformance(location = null) {
         try {
+            // If location is provided, we use a filtered query instead of the global view
+            if (location) {
+                const result = await db.query(
+                    `SELECT priority,
+                            COUNT(*)::int AS total_tickets,
+                            SUM(CASE WHEN COALESCE(sla_breached, false) = false THEN 1 ELSE 0 END)::int AS sla_met,
+                            SUM(CASE WHEN COALESCE(sla_breached, false) = true THEN 1 ELSE 0 END)::int AS sla_breached,
+                            ROUND(100.0 * SUM(CASE WHEN COALESCE(sla_breached, false) = false THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 2) AS sla_compliance_percent
+                     FROM tickets
+                     WHERE status IN ('Resolved', 'Closed') AND location = $1
+                     GROUP BY priority`,
+                    [location]
+                );
+                return this._formatSlaResult(result.rows);
+            }
+
             const result = await db.query(`SELECT * FROM sla_performance_summary`);
-            const performance = result.rows.reduce((acc, row) => {
-                acc[row.priority] = {
-                    total: parseInt(row.total_tickets, 10),
-                    met: parseInt(row.sla_met, 10),
-                    breached: parseInt(row.sla_breached, 10),
-                    compliance: parseFloat(row.sla_compliance_percent) || 0,
-                };
-                return acc;
-            }, {});
-
-            // Ensure all priorities (P1-P4) are present
-            const priorities = ['P1', 'P2', 'P3', 'P4'];
-            priorities.forEach(priority => {
-                if (!performance[priority]) {
-                    performance[priority] = {
-                        total: 0,
-                        met: 0,
-                        breached: 0,
-                        compliance: 0,
-                    };
-                }
-            });
-
-            return performance;
+            return this._formatSlaResult(result.rows);
         } catch (err) {
-            // Fallback: Calculate from resolved/closed tickets
-            const fallback = await db.query(
+            // Fallback logic
+            const where = ["status IN ('Resolved', 'Closed')"];
+            const values = [];
+            if (location) {
+                values.push(location);
+                where.push(`location = $${values.length}`);
+            }
+            const result = await db.query(
                 `SELECT priority,
-                COUNT(*)::int AS total,
-                SUM(CASE WHEN COALESCE(sla_breached, false) = false THEN 1 ELSE 0 END)::int AS met,
-                SUM(CASE WHEN COALESCE(sla_breached, false) = true THEN 1 ELSE 0 END)::int AS breached
-         FROM tickets
-         WHERE status IN ('Resolved', 'Closed')
-         GROUP BY priority`
+                        COUNT(*)::int AS total,
+                        SUM(CASE WHEN COALESCE(sla_breached, false) = false THEN 1 ELSE 0 END)::int AS met,
+                        SUM(CASE WHEN COALESCE(sla_breached, false) = true THEN 1 ELSE 0 END)::int AS breached
+                 FROM tickets
+                 WHERE ${where.join(' AND ')}
+                 GROUP BY priority`,
+                values
             );
-            const performance = fallback.rows.reduce((acc, row) => {
-                const total = parseInt(row.total, 10);
-                const met = parseInt(row.met, 10);
-                const breached = parseInt(row.breached, 10);
-                acc[row.priority] = {
-                    total,
-                    met,
-                    breached,
-                    compliance: total > 0 ? Number(((met / total) * 100).toFixed(2)) : 0,
-                };
-                return acc;
-            }, {});
-
-            // Ensure all priorities (P1-P4) are present
-            const priorities = ['P1', 'P2', 'P3', 'P4'];
-            priorities.forEach(priority => {
-                if (!performance[priority]) {
-                    performance[priority] = {
-                        total: 0,
-                        met: 0,
-                        breached: 0,
-                        compliance: 0,
-                    };
-                }
-            });
-
-            return performance;
+            return this._formatSlaResult(result.rows, true);
         }
     },
 
-    async getTicketVolume() {
+    _formatSlaResult(rows, isFallback = false) {
+        const performance = rows.reduce((acc, row) => {
+            const total = parseInt(isFallback ? row.total : row.total_tickets, 10);
+            const met = parseInt(isFallback ? row.met : row.sla_met, 10);
+            const breached = parseInt(isFallback ? row.breached : row.sla_breached, 10);
+            const compliance = isFallback
+                ? (total > 0 ? Number(((met / total) * 100).toFixed(2)) : 0)
+                : (parseFloat(row.sla_compliance_percent) || 0);
+
+            acc[row.priority] = { total, met, breached, compliance };
+            return acc;
+        }, {});
+
+        ['P1', 'P2', 'P3', 'P4'].forEach(priority => {
+            if (!performance[priority]) {
+                performance[priority] = { total: 0, met: 0, breached: 0, compliance: 0 };
+            }
+        });
+        return performance;
+    },
+
+    async getTicketVolume(location = null) {
         const group = async (column) => {
-            const res = await db.query(`SELECT ${column} as key, COUNT(*)::int as value FROM tickets GROUP BY ${column}`);
+            const where = location ? `WHERE location = $1` : '';
+            const values = location ? [location] : [];
+            const res = await db.query(`SELECT ${column} as key, COUNT(*)::int as value FROM tickets ${where} GROUP BY ${column}`, values);
             return res.rows;
         };
 
@@ -123,8 +120,10 @@ const DashboardService = {
         }
     },
 
-    async getStatusSummary() {
-        const result = await db.query(`SELECT status, COUNT(*)::int AS count FROM tickets GROUP BY status`);
+    async getStatusSummary(location = null) {
+        const where = location ? `WHERE location = $1` : '';
+        const values = location ? [location] : [];
+        const result = await db.query(`SELECT status, COUNT(*)::int AS count FROM tickets ${where} GROUP BY status`, values);
         const status_counts = result.rows.reduce((acc, row) => {
             acc[row.status] = parseInt(row.count, 10);
             return acc;
@@ -158,7 +157,7 @@ const DashboardService = {
         return result.rows[0] || { total_breached: 0, critical_breached: 0 };
     },
 
-    async getExportData({ start_date, end_date }) {
+    async getExportData({ start_date, end_date, location }) {
         const filters = [];
         const values = [];
         if (start_date) {
@@ -168,6 +167,10 @@ const DashboardService = {
         if (end_date) {
             values.push(end_date);
             filters.push(`created_at <= $${values.length}`);
+        }
+        if (location) {
+            values.push(location);
+            filters.push(`location = $${values.length}`);
         }
         const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
         const result = await db.query(
@@ -400,6 +403,34 @@ const DashboardService = {
                 bucket_15_plus: 0,
             },
             top_tags: topTags.rows,
+        };
+    },
+
+    async getAgentStats(userId) {
+        // Core metrics: Active tickets, SLA breaches, Resolved this week
+        const stats = await db.query(`
+            SELECT
+                COUNT(CASE WHEN status NOT IN ('Resolved', 'Closed') THEN 1 END)::int as active_tickets,
+                COUNT(CASE WHEN sla_breached = true AND status NOT IN ('Resolved', 'Closed') THEN 1 END)::int as sla_breaches,
+                COUNT(CASE WHEN status = 'Resolved' AND resolved_at >= DATE_TRUNC('week', NOW()) THEN 1 END)::int as resolved_this_week,
+                COALESCE(AVG(CASE WHEN status = 'Resolved' THEN EXTRACT(EPOCH FROM (resolved_at - created_at))/3600 END), 0)::numeric(10,1) as avg_resolution_hours
+            FROM tickets
+            WHERE assigned_to = $1
+        `, [userId]);
+
+        // Recent activity (audit logs)
+        const recentActivity = await db.query(`
+            SELECT a.action_type, a.description, a.timestamp, t.ticket_number
+            FROM audit_logs a
+            JOIN tickets t ON t.ticket_id = a.ticket_id
+            WHERE a.user_id = $1
+            ORDER BY a.timestamp DESC
+            LIMIT 5
+        `, [userId]);
+
+        return {
+            metrics: stats.rows[0],
+            recent_activity: recentActivity.rows
         };
     },
 

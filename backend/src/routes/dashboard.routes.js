@@ -35,6 +35,8 @@ router.get('/advanced-reporting', authenticate, authorize(['it_manager', 'system
 router.get('/pulse', authenticate, DashboardController.getPulse);
 
 // Executive Actions (Admin only)
+router.get('/agent-stats', authenticate, authorize(['it_agent', 'it_manager', 'system_admin']), DashboardController.getAgentStats);
+
 router.post('/bulk-escalate-p1', authenticate, authorize(['system_admin']), DashboardController.bulkEscalateP1);
 router.post('/broadcast', authenticate, authorize(['system_admin', 'it_manager']), DashboardController.broadcast);
 

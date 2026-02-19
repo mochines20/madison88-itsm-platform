@@ -39,7 +39,7 @@ async function ensureUniqueSlug(baseSlug, currentId = null) {
 router.get('/articles', authenticate, async (req, res, next) => {
   try {
     const { category, status, page = 1, limit = 50 } = req.query;
-    const isPrivileged = ['it_manager', 'system_admin'].includes(req.user.role);
+    const isPrivileged = ['it_agent', 'it_manager', 'system_admin'].includes(req.user.role);
     const resolvedStatus = isPrivileged ? status : 'published';
     const data = await KnowledgeBaseModel.listArticles({
       category,
@@ -65,7 +65,7 @@ router.get('/articles/:id', authenticate, async (req, res, next) => {
     if (!article) {
       return res.status(404).json({ status: 'error', message: 'Article not found' });
     }
-    const isPrivileged = ['it_manager', 'system_admin'].includes(req.user.role);
+    const isPrivileged = ['it_agent', 'it_manager', 'system_admin'].includes(req.user.role);
     if (!isPrivileged && article.status !== 'published') {
       return res.status(403).json({ status: 'error', message: 'Forbidden' });
     }
@@ -214,7 +214,7 @@ router.patch('/articles/:id', authenticate, authorize(['it_manager', 'system_adm
 router.get('/search', authenticate, async (req, res, next) => {
   try {
     const { q, category, status, page = 1, limit = 50 } = req.query;
-    const isPrivileged = ['it_manager', 'system_admin'].includes(req.user.role);
+    const isPrivileged = ['it_agent', 'it_manager', 'system_admin'].includes(req.user.role);
     const resolvedStatus = isPrivileged ? status : 'published';
 
     if (!q) {

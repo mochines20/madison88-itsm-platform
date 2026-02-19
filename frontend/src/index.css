@@ -297,11 +297,17 @@ textarea {
   border-radius: 16px;
   padding: 14px;
   border: 1px solid rgba(47, 215, 255, 0.12);
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .user-card strong {
   display: block;
   font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--slate-100);
 }
 
 .user-card span {

@@ -108,10 +108,13 @@ const MainLayout = ({ user, notifications = [], unreadCount = 0, onLogout, onNot
                 <div className="sidebar-footer">
                     <div className="user-card">
                         <div>
-                            <strong>{user?.full_name || "User"}</strong>
+                            <strong title={user?.full_name || user?.email}>{user?.full_name || "User"}</strong>
                             <span className="role-pill">{user?.role}</span>
                         </div>
                     </div>
+                    <Link to="/profile" className="btn ghost small" style={{ marginBottom: '0.5rem', width: '100%', justifyContent: 'center' }}>
+                        Profile Settings
+                    </Link>
                     <button
                         className="btn ghost"
                         onClick={handleLogout}

@@ -10,8 +10,14 @@ router.get('/me', authenticate, UsersController.getMe);
 // List users (admin or manager)
 router.get('/', authenticate, authorize(['system_admin', 'it_manager']), UsersController.listUsers);
 
-// Create user (admin only)
-router.post('/', authenticate, authorize(['system_admin']), UsersController.createUser);
+// Create user (admin or manager)
+router.post('/', authenticate, authorize(['system_admin', 'it_manager']), UsersController.createUser);
+
+// Add existing agent to team by email
+router.post('/team-membership', authenticate, authorize(['system_admin', 'it_manager']), UsersController.addTeamMemberByEmail);
+
+// Update current user profile
+router.patch('/me', authenticate, UsersController.updateMe);
 
 // Update user (admin only)
 router.patch('/:id', authenticate, authorize(['system_admin']), UsersController.updateUser);

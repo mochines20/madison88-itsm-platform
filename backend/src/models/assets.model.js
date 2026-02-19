@@ -1,7 +1,7 @@
 const db = require('../config/database');
 
 const AssetsModel = {
-  async listAssets({ status, asset_type, assigned_user_id }) {
+  async listAssets({ status, asset_type, assigned_user_id, location }) {
     const where = [];
     const values = [];
 
@@ -16,6 +16,10 @@ const AssetsModel = {
     if (assigned_user_id) {
       values.push(assigned_user_id);
       where.push(`a.assigned_user_id = $${values.length}`);
+    }
+    if (location) {
+      values.push(location);
+      where.push(`a.location = $${values.length}`);
     }
 
     const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';

@@ -54,6 +54,8 @@ const TicketsPage = ({
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [tagInput, setTagInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [tagQuery, setTagQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -76,6 +78,17 @@ const TicketsPage = ({
   const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0 });
   const previousStatusRef = useRef(new Map());
   const location = useLocation();
+
+  // Debounce search inputs — only fire API after 400ms of inactivity
+  useEffect(() => {
+    const timer = setTimeout(() => setSearchQuery(searchInput), 400);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setTagQuery(tagInput), 400);
+    return () => clearTimeout(timer);
+  }, [tagInput]);
 
   // Parse filters from URL on mount (for Drill-down Dashboard)
   useEffect(() => {
@@ -298,13 +311,8 @@ const TicketsPage = ({
     }
   };
 
-  if (loading) {
-    return <div className="panel">Loading tickets...</div>;
-  }
-
-  if (error) {
-    return <div className="panel error">{error}</div>;
-  }
+  // Note: We no longer return early for loading/error states.
+  // The filter bar must stay visible so users can type in search without losing focus.
 
   return (
     <div className={`panel ${isTeamUrgentView ? "team-queue-panel" : ""}`}>
@@ -342,13 +350,13 @@ const TicketsPage = ({
       </div>
       <div className="filter-bar ticket-filters">
         <input
-          value={searchQuery}
-          onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
+          value={searchInput}
+          onChange={(e) => { setSearchInput(e.target.value); setPage(1); }}
           placeholder="Search title, description, ticket number"
         />
         <input
-          value={tagQuery}
-          onChange={(e) => { setTagQuery(e.target.value); setPage(1); }}
+          value={tagInput}
+          onChange={(e) => { setTagInput(e.target.value); setPage(1); }}
           placeholder="Tags (comma-separated)"
         />
         {(isManager || isAdmin) && (
@@ -459,12 +467,18 @@ const TicketsPage = ({
         </div>
       )}
       <div className="ticket-list">
-        {displayedTickets.length === 0 && (
+        {loading && (
+          <div className="empty-state">Loading tickets...</div>
+        )}
+        {!loading && error && (
+          <div className="empty-state" style={{ color: 'var(--color-error, #ff6b6b)' }}>{error}</div>
+        )}
+        {!loading && !error && displayedTickets.length === 0 && (
           <div className="empty-state">
             No tickets yet. Create your first request.
           </div>
         )}
-        {displayedTickets.map((ticket) => (
+        {!loading && !error && displayedTickets.map((ticket) => (
           <button
             key={ticket.ticket_id}
             className={`ticket-card cascade-item hover-lift ${selectedId === ticket.ticket_id ? "active" : ""

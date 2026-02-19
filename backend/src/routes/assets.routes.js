@@ -46,7 +46,13 @@ router.get('/', authenticate, authorize(['it_agent', 'it_manager', 'system_admin
   try {
     const { status, asset_type, assigned_user_id } = req.query;
     const userAssignedId = req.user.role === 'end_user' ? req.user.user_id : assigned_user_id;
-    const assets = await AssetsModel.listAssets({ status, asset_type, assigned_user_id: userAssignedId });
+
+    let location = req.query.location || null;
+    if (['it_agent', 'it_manager'].includes(req.user.role) && req.user.location) {
+      location = req.user.location;
+    }
+
+    const assets = await AssetsModel.listAssets({ status, asset_type, assigned_user_id: userAssignedId, location });
     const scored = assets.map((asset) => {
       const openCount = asset.open_ticket_count || 0;
       const avgAge = Number(asset.avg_open_age_days || 0);
@@ -69,6 +75,13 @@ router.get('/:id', authenticate, authorize(['it_agent', 'it_manager', 'system_ad
   try {
     const asset = await AssetsModel.getAssetById(req.params.id);
     if (!asset) return res.status(404).json({ status: 'error', message: 'Asset not found' });
+
+    // Strict isolation: IT staff check
+    if (['it_agent', 'it_manager'].includes(req.user.role)) {
+      if (req.user.location && asset.location !== req.user.location) {
+        return res.status(403).json({ status: 'error', message: 'Forbidden: Asset belongs to another location' });
+      }
+    }
     const tickets = await AssetsModel.listAssetTickets(req.params.id);
     const openCount = asset.open_ticket_count || 0;
     const avgAge = Number(asset.avg_open_age_days || 0);
@@ -90,6 +103,15 @@ router.post('/', authenticate, authorize(['it_manager', 'system_admin']), async 
     if (error) {
       return res.status(400).json({ status: 'error', message: error.details.map((d) => d.message).join(', ') });
     }
+    // Strict isolation: Manager location enforcement
+    if (req.user.role === 'it_manager' && req.user.location) {
+      if (value.location && value.location !== req.user.location) {
+        return res.status(403).json({ status: 'error', message: `Forbidden: You can only create assets for the ${req.user.location} region` });
+      }
+      // Force location to manager's location if not provided
+      if (!value.location) value.location = req.user.location;
+    }
+
     const asset = await AssetsModel.createAsset({
       asset_tag: value.asset_tag,
       serial_number: value.serial_number || null,
@@ -121,6 +143,20 @@ router.patch('/:id', authenticate, authorize(['it_manager', 'system_admin']), as
     if (error) {
       return res.status(400).json({ status: 'error', message: error.details.map((d) => d.message).join(', ') });
     }
+    const existingAsset = await AssetsModel.getAssetById(req.params.id);
+    if (!existingAsset) return res.status(404).json({ status: 'error', message: 'Asset not found' });
+
+    // Strict isolation: IT manager location check
+    if (req.user.role === 'it_manager' && req.user.location) {
+      if (existingAsset.location !== req.user.location) {
+        return res.status(403).json({ status: 'error', message: 'Forbidden: Asset belongs to another location' });
+      }
+      // Also prevent moving assets to other locations
+      if (value.location && value.location !== req.user.location) {
+        return res.status(403).json({ status: 'error', message: `Forbidden: You cannot move assets to the ${value.location} region` });
+      }
+    }
+
     const asset = await AssetsModel.updateAsset(req.params.id, value);
     res.json({ status: 'success', data: { asset } });
   } catch (err) {

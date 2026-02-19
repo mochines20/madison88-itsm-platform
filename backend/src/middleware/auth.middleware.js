@@ -24,7 +24,7 @@ function authorize(roles = []) {
       return res.status(401).json({ status: 'error', message: 'Missing or invalid token' });
     }
     // Global admins can access everything
-    if (req.user.role === 'global_admin') {
+    if (req.user.role === 'system_admin') {
       return next();
     }
     if (!roles.length || roles.includes(req.user.role)) {

@@ -4,7 +4,8 @@ const PulseService = require('../services/pulse.service');
 const DashboardController = {
     async getSlaPerformance(req, res, next) {
         try {
-            const sla_performance = await DashboardService.getSlaPerformance();
+            const location = ['it_agent', 'it_manager'].includes(req.user.role) ? req.user.location : null;
+            const sla_performance = await DashboardService.getSlaPerformance(location);
             res.json({ status: 'success', data: { sla_performance } });
         } catch (err) {
             next(err);
@@ -13,7 +14,8 @@ const DashboardController = {
 
     async getTicketVolume(req, res, next) {
         try {
-            const ticket_volume = await DashboardService.getTicketVolume();
+            const location = ['it_agent', 'it_manager'].includes(req.user.role) ? req.user.location : null;
+            const ticket_volume = await DashboardService.getTicketVolume(location);
             res.json({
                 status: 'success',
                 data: { ticket_volume },
@@ -25,7 +27,8 @@ const DashboardController = {
 
     async getTeamPerformance(req, res, next) {
         try {
-            const team_performance = await DashboardService.getTeamPerformance();
+            const location = ['it_agent', 'it_manager'].includes(req.user.role) ? req.user.location : null;
+            const team_performance = await DashboardService.getTeamPerformance(location);
             res.json({ status: 'success', data: { team_performance } });
         } catch (err) {
             next(err);
@@ -34,7 +37,8 @@ const DashboardController = {
 
     async getAgingReport(req, res, next) {
         try {
-            const aging_report = await DashboardService.getAgingReport();
+            const location = ['it_agent', 'it_manager'].includes(req.user.role) ? req.user.location : null;
+            const aging_report = await DashboardService.getAgingReport(location);
             res.json({ status: 'success', data: { aging_report } });
         } catch (err) {
             next(err);
@@ -43,7 +47,8 @@ const DashboardController = {
 
     async getStatusSummary(req, res, next) {
         try {
-            const result = await DashboardService.getStatusSummary();
+            const location = ['it_agent', 'it_manager'].includes(req.user.role) ? req.user.location : null;
+            const result = await DashboardService.getStatusSummary(location);
             res.json({ status: 'success', data: result });
         } catch (err) {
             next(err);
@@ -52,7 +57,8 @@ const DashboardController = {
 
     async getSlaSummary(req, res, next) {
         try {
-            const summary = await DashboardService.getSlaSummary();
+            const location = ['it_agent', 'it_manager'].includes(req.user.role) ? req.user.location : null;
+            const summary = await DashboardService.getSlaSummary(location);
             res.json({ status: 'success', data: { summary } });
         } catch (err) {
             next(err);
@@ -62,7 +68,8 @@ const DashboardController = {
     async getExportData(req, res, next) {
         try {
             const { format = 'json', start_date, end_date } = req.query;
-            const tickets = await DashboardService.getExportData({ start_date, end_date });
+            const location = ['it_agent', 'it_manager'].includes(req.user.role) ? req.user.location : null;
+            const tickets = await DashboardService.getExportData({ start_date, end_date, location });
 
             if (format === 'csv') {
                 res.setHeader('Content-Type', 'text/csv');
@@ -113,6 +120,15 @@ const DashboardController = {
                 message: `Successfully escalated ${escalatedTickets.length} P1 tickets.`,
                 data: { escalatedTickets }
             });
+        } catch (err) {
+            next(err);
+        }
+    },
+
+    async getAgentStats(req, res, next) {
+        try {
+            const stats = await DashboardService.getAgentStats(req.user.user_id);
+            res.json({ status: 'success', data: stats });
         } catch (err) {
             next(err);
         }

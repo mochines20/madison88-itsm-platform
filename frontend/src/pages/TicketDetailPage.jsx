@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import apiClient from "../api/client";
 import { hasMaxLength, hasMinLength, isBlank } from "../utils/validation";
 import { joinTicket, leaveTicket, onPresenceUpdate } from "../api/socket";
+import GlassyTicketLayout from "../components/tickets/GlassyTicketLayout";
 
 const statusOptions = [
   "New",
@@ -563,6 +564,25 @@ const TicketDetailPage = ({
 
   if (!ticket) {
     return <div className="panel detail-panel" style={{ animation: 'fadeIn 0.3s ease' }}>Ticket not found.</div>;
+  }
+
+  // GLASSY UI FOR IT STAFF
+  if (["it_agent", "it_manager", "system_admin"].includes(user?.role)) {
+    return (
+      <GlassyTicketLayout
+        ticket={ticket}
+        user={user}
+        comments={comments}
+        assets={assets}
+        audit={audit}
+        onCommentAdded={(newComment) => setComments([...comments, newComment])}
+        onTicketUpdated={(updatedTicket) => {
+          setTicket(updatedTicket);
+          if (onUpdated) onUpdated();
+        }}
+        onClose={onClose}
+      />
+    );
   }
 
   const canEditEndUser =

@@ -59,6 +59,20 @@ const ManagerDashboard = () => {
   const [showBroadcastModal, setShowBroadcastModal] = useState(false);
   const [broadcastMessage, setBroadcastMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [showTeamModal, setShowTeamModal] = useState(false);
+  const [showAddAgentModal, setShowAddAgentModal] = useState(false);
+  const [teamMembers, setTeamMembers] = useState([]);
+  const [agentEmail, setAgentEmail] = useState('');
+  const [isAddingByEmail, setIsAddingByEmail] = useState(false);
+  const [newAgent, setNewAgent] = useState({
+    email: '',
+    first_name: '',
+    last_name: '',
+    full_name: '',
+    password: '',
+    phone: '',
+    department: 'IT Support'
+  });
 
   const trendLabelsForChart = (trendData) => {
     return trendData.map(d => {
@@ -211,6 +225,47 @@ const ManagerDashboard = () => {
     window.open(url, '_blank');
   };
 
+  const loadTeam = async () => {
+    try {
+      const res = await apiClient.get('/users?role=it_agent');
+      setTeamMembers(res.data.data.users || []);
+    } catch (err) {
+      console.error("Failed to load team:", err);
+    }
+  };
+
+  const handleAddAgent = async (e) => {
+    e.preventDefault();
+    try {
+      await apiClient.post('/users', {
+        ...newAgent,
+        role: 'it_agent' // Enforced by backend but good to specify
+      });
+      window.alert('Agent recruited successfully!');
+      setShowAddAgentModal(false);
+      setNewAgent({ email: '', first_name: '', last_name: '', full_name: '', password: '', phone: '', department: 'IT Support' });
+      loadTeam();
+    } catch (err) {
+      alert(err.response?.data?.message || "Failed to recruit agent");
+    }
+  };
+
+  const handleAddByEmail = async (e) => {
+    e.preventDefault();
+    if (!agentEmail.trim()) return;
+    setIsAddingByEmail(true);
+    try {
+      await apiClient.post('/users/team-membership', { email: agentEmail.trim() });
+      window.alert('Agent added to your team successfully!');
+      setAgentEmail('');
+      loadTeam();
+    } catch (err) {
+      alert(err.response?.data?.message || "Failed to add agent by email. Ensure they exist and are IT Agents in your location.");
+    } finally {
+      setIsAddingByEmail(false);
+    }
+  };
+
   if (loading) return <div className="loading-overlay">Loading Analytics...</div>;
 
   return (
@@ -224,6 +279,9 @@ const ManagerDashboard = () => {
         <div className="header-actions">
           <button className="icon-btn hover-lift" title="Export Report" onClick={handleExport}>
             <FiDownload />
+          </button>
+          <button className="icon-btn hover-lift" title="Manage Team" onClick={() => { loadTeam(); setShowTeamModal(true); }}>
+            <FiUsers />
           </button>
           <button className="action-btn primary hover-lift" onClick={() => setShowBroadcastModal(true)}>
             <FiMessageSquare /> Broadcast to Team
@@ -433,6 +491,104 @@ const ManagerDashboard = () => {
           ))}
         </div>
       </section>
+
+      {/* Manage Team Modal */}
+      {showTeamModal && (
+        <div className="modal-overlay animate-fadeIn">
+          <div className="modal-content glass animate-slideUp team-modal">
+            <div className="modal-header">
+              <FiUsers className="icon-primary" />
+              <h2>Your Team</h2>
+            </div>
+            <div className="modal-body">
+              <div className="team-list">
+                {teamMembers.length > 0 ? teamMembers.map(member => (
+                  <div key={member.user_id} className="team-member-item">
+                    <div className="member-avatar">{member.full_name?.[0] || '?'}</div>
+                    <div className="member-info">
+                      <strong>{member.full_name}</strong>
+                      <small>{member.email} • {member.location}</small>
+                    </div>
+                  </div>
+                )) : <p className="muted">No agents in your team yet.</p>}
+              </div>
+
+              <div className="add-by-email-section">
+                <h4>Quick Add by Email</h4>
+                <p className="section-hint">Add an existing IT Agent to your team by entering their email address.</p>
+                <form onSubmit={handleAddByEmail} className="email-add-form">
+                  <input
+                    type="email"
+                    placeholder="agent@company.com"
+                    value={agentEmail}
+                    onChange={e => setAgentEmail(e.target.value)}
+                    required
+                  />
+                  <button type="submit" className="btn-primary small" disabled={isAddingByEmail || !agentEmail.trim()}>
+                    {isAddingByEmail ? 'Adding...' : 'Add to Team'}
+                  </button>
+                </form>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="btn-secondary" onClick={() => setShowTeamModal(false)}>Close</button>
+              <button type="button" className="btn-primary" onClick={() => { setShowTeamModal(false); setShowAddAgentModal(true); }}> Recruit New Agent</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Agent Modal */}
+      {showAddAgentModal && (
+        <div className="modal-overlay animate-fadeIn">
+          <div className="modal-content glass animate-slideUp">
+            <div className="modal-header">
+              <FiUsers className="icon-primary" />
+              <h2>Recruit IT Agent</h2>
+            </div>
+            <form onSubmit={handleAddAgent}>
+              <div className="modal-body scrollable-body">
+                <div className="form-grid">
+                  <div className="form-group">
+                    <label>First Name</label>
+                    <input
+                      type="text"
+                      required
+                      value={newAgent.first_name}
+                      onChange={e => setNewAgent({ ...newAgent, first_name: e.target.value, full_name: `${e.target.value} ${newAgent.last_name}`.trim() })}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Last Name</label>
+                    <input
+                      type="text"
+                      required
+                      value={newAgent.last_name}
+                      onChange={e => setNewAgent({ ...newAgent, last_name: e.target.value, full_name: `${newAgent.first_name} ${e.target.value}`.trim() })}
+                    />
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label>Email Address</label>
+                  <input type="email" required value={newAgent.email} onChange={e => setNewAgent({ ...newAgent, email: e.target.value })} />
+                </div>
+                <div className="form-group">
+                  <label>Initial Password</label>
+                  <input type="password" required value={newAgent.password} onChange={e => setNewAgent({ ...newAgent, password: e.target.value })} minLength={6} />
+                </div>
+                <div className="form-group">
+                  <label>Department</label>
+                  <input type="text" value={newAgent.department} onChange={e => setNewAgent({ ...newAgent, department: e.target.value })} />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn-secondary" onClick={() => setShowAddAgentModal(false)}>Cancel</button>
+                <button type="submit" className="btn-primary">Onboard Agent</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       <style>{`
         .manager-dashboard {
@@ -668,6 +824,50 @@ const ManagerDashboard = () => {
           to { transform: translateY(0); opacity: 1; }
         }
         .animate-slideUp { animation: slideUp 0.3s ease-out forwards; }
+
+        .team-modal { max-width: 600px !important; }
+        .team-list { display: flex; flex-direction: column; gap: 1rem; max-height: 400px; overflow-y: auto; padding-right: 0.5rem; }
+        .team-member-item {
+          display: flex;
+          align-items: center;
+          gap: 1rem;
+          padding: 1rem;
+          background: rgba(255, 255, 255, 0.03);
+          border-radius: 12px;
+          border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .member-avatar {
+          width: 40px; height: 40px; border-radius: 10px;
+          background: #3b82f6; color: #fff;
+          display: flex; align-items: center; justify-content: center;
+          font-weight: 800;
+        }
+        .member-info { display: flex; flex-direction: column; }
+        .member-info strong { font-size: 1rem; }
+        .member-info small { color: #64748b; font-size: 0.8rem; }
+
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+        .form-group { margin-bottom: 1.2rem; }
+        .form-group label { display: block; font-size: 0.8rem; color: #94a3b8; margin-bottom: 0.4rem; font-weight: 600; }
+        .form-group input {
+          width: 100%;
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 10px;
+          color: #fff;
+          padding: 0.8rem;
+          font-size: 0.9rem;
+        }
+        .form-group input:focus { outline: none; border-color: #3b82f6; background: rgba(255, 255, 255, 0.08); }
+        .scrollable-body { max-height: 50vh; overflow-y: auto; padding-right: 0.5rem; }
+
+        .add-by-email-section { margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid rgba(255, 255, 255, 0.1); }
+        .add-by-email-section h4 { font-size: 0.9rem; margin-bottom: 0.5rem; color: #f8fafc; }
+        .section-hint { font-size: 0.8rem; color: #64748b; margin-bottom: 1rem; }
+        .email-add-form { display: flex; gap: 0.8rem; }
+        .email-add-form input { flex: 1; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #fff; padding: 0.6rem 0.8rem; font-size: 0.85rem; }
+        .email-add-form button { white-space: nowrap; }
+        .btn-primary.small { padding: 0.5rem 1rem; font-size: 0.85rem; border-radius: 8px; }
       `}</style>
     </div>
   );

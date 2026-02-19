@@ -23,13 +23,23 @@ const UserModel = {
     await db.query('UPDATE users SET last_login = NOW() WHERE user_id = $1', [userId]);
   },
 
-  async listUsers({ role } = {}) {
+  async listUsers({ role, location, search } = {}) {
     const conditions = [];
     const values = [];
 
     if (role) {
       values.push(role);
       conditions.push(`role = $${values.length}`);
+    }
+
+    if (location) {
+      values.push(location);
+      conditions.push(`location = $${values.length}`);
+    }
+
+    if (search) {
+      values.push(`%${search}%`);
+      conditions.push(`(email ILIKE $${values.length} OR full_name ILIKE $${values.length})`);
     }
 
     const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -48,7 +58,7 @@ const UserModel = {
     const setClause = keys.map((key, index) => `${key} = $${index + 1}`).join(', ');
 
     const result = await db.query(
-      `UPDATE users SET ${setClause}, updated_at = NOW() WHERE user_id = $${keys.length + 1} RETURNING user_id, email, full_name, role, department, location, phone, is_active, created_at, password_hash`,
+      `UPDATE users SET ${setClause}, updated_at = NOW() WHERE user_id = $${keys.length + 1} RETURNING *`,
       [...values, userId]
     );
     return result.rows[0];

@@ -20,7 +20,7 @@ const createSchema = Joi.object({
   description: Joi.string().min(10).required(),
   business_impact: Joi.string().min(10).required(),
   category: Joi.string().valid('Hardware', 'Software', 'Access Request', 'Account Creation', 'Network', 'Other').required(),
-  location: Joi.string().valid('Philippines', 'US', 'Indonesia', 'Other').required(),
+  location: Joi.string().valid('Philippines', 'US', 'Indonesia', 'China', 'Other').required(),
   subcategory: Joi.string().allow('', null),
   tags: Joi.string().allow('', null),
   priority: Joi.string().valid('P1', 'P2', 'P3', 'P4').allow('', null),
@@ -129,7 +129,7 @@ function mapPriorityToSeverity(priority) {
   }
 }
 
-async function buildSla(priority, category) {
+async function buildSla(priority, category, location = 'Default') {
   // 1. Try to find a rule matching both priority AND category
   let rule = await TicketsModel.getSlaRule(priority, category);
 
@@ -142,8 +142,8 @@ async function buildSla(priority, category) {
   const responseHours = rule ? rule.response_time_hours : DEFAULT_RESPONSE_HOURS;
   const resolutionHours = rule ? rule.resolution_time_hours : DEFAULT_RESOLUTION_HOURS;
 
-  const responseDue = SlaUtils.addBusinessHours(now, responseHours);
-  const resolutionDue = SlaUtils.addBusinessHours(now, resolutionHours);
+  const responseDue = SlaUtils.addBusinessHours(now, responseHours, location);
+  const resolutionDue = SlaUtils.addBusinessHours(now, resolutionHours, location);
 
   const escalation_threshold_percent = rule ? rule.escalation_threshold_percent : 100;
 
@@ -197,14 +197,14 @@ const TicketsService = {
     });
 
     const finalPriority = routingRule?.priority_override || priority;
-    const sla = await buildSla(finalPriority, value.category);
+    const sla = await buildSla(finalPriority, value.category, value.location);
 
     const assigned_team = routingRule?.assigned_team || null;
     let assigned_to = null;
     let assigned_at = null;
     let assigned_by = null;
     if (assigned_team) {
-      const agentId = await TicketsModel.getLeastLoadedAgent(assigned_team);
+      const agentId = await TicketsModel.getLeastLoadedAgent(assigned_team, value.location);
       if (agentId) {
         assigned_to = agentId;
         assigned_at = new Date();
@@ -295,15 +295,17 @@ const TicketsService = {
     const adminUsers = await UserModel.listUsers({ role: 'system_admin' });
     const adminEmailOverride = process.env.ADMIN_NOTIFICATION_EMAIL;
     const requester = await UserModel.findById(user.user_id);
-    const adminEmailRecipients = adminEmailOverride
-      ? [{ email: adminEmailOverride }]
-      : adminUsers;
+    // Include both override and system admins
+    const adminEmailRecipients = [...adminUsers];
+    if (adminEmailOverride && !adminUsers.some(a => a.email === adminEmailOverride)) {
+      adminEmailRecipients.push({ email: adminEmailOverride });
+    }
 
     if (ticket.priority === 'P1') {
       const teamLeadId = await TicketsModel.getTeamLeadIdByTeamId(ticket.assigned_team);
       const teamMemberIds = await TicketsModel.listTeamMemberIdsForTeams(ticket.assigned_team ? [ticket.assigned_team] : []);
       const recipientIds = Array.from(new Set([teamLeadId, ...teamMemberIds].filter(Boolean)));
-      const recipients = await UserModel.listUsersByIds(recipientIds);
+      const recipients = await UserModel.listByIds(recipientIds);
 
       await NotificationService.sendCriticalTicketNotice({
         ticket,
@@ -366,7 +368,7 @@ const TicketsService = {
       role: user.role,
     });
 
-    const sla = await buildSla(priority);
+    const sla = await buildSla(priority, value.category, value.location);
     const routingRule = await TicketsModel.getRoutingRule({
       category: value.category,
       subcategory: value.subcategory,
@@ -378,7 +380,7 @@ const TicketsService = {
     let assigned_at = null;
     let assigned_by = null;
     if (assigned_team) {
-      const agentId = await TicketsModel.getLeastLoadedAgent(assigned_team);
+      const agentId = await TicketsModel.getLeastLoadedAgent(assigned_team, value.location);
       if (agentId) {
         assigned_to = agentId;
         assigned_at = new Date();
@@ -501,9 +503,11 @@ const TicketsService = {
     const adminUsers = await UserModel.listUsers({ role: 'system_admin' });
     const adminEmailOverride = process.env.ADMIN_NOTIFICATION_EMAIL;
     const requester = await UserModel.findById(user.user_id);
-    const adminEmailRecipients = adminEmailOverride
-      ? [{ email: adminEmailOverride }]
-      : adminUsers;
+    // Include both override and system admins
+    const adminEmailRecipients = [...adminUsers];
+    if (adminEmailOverride && !adminUsers.some(a => a.email === adminEmailOverride)) {
+      adminEmailRecipients.push({ email: adminEmailOverride });
+    }
 
     await NotificationService.sendNewTicketNotice({
       ticket,
@@ -532,10 +536,21 @@ const TicketsService = {
     const parsedTags = typeof tags === 'string'
       ? tags.split(',').map((tag) => tag.trim()).filter(Boolean)
       : [];
+
+    const splitMulti = (val) => (typeof val === 'string' && val.includes(',') ? val.split(',').map(v => v.trim()).filter(Boolean) : val);
+    const resolvedStatus = splitMulti(status);
+    const resolvedPriority = splitMulti(priority);
+
+    // Normalize assigned_to=me
+    let resolvedAssignedTo = assigned_to;
+    if (assigned_to === 'me') {
+      resolvedAssignedTo = user.user_id;
+    }
+
     // Only include filters that have non-empty values
     const filters = {};
-    if (status && status.trim()) filters.status = status.trim();
-    if (priority && priority.trim()) filters.priority = priority.trim();
+    if (resolvedStatus) filters.status = resolvedStatus;
+    if (resolvedPriority) filters.priority = resolvedPriority;
     if (category && category.trim()) filters.category = category.trim();
     if (location && location.trim()) filters.location = location.trim();
     if (ticket_type && ticket_type.trim()) filters.ticket_type = ticket_type.trim();
@@ -565,27 +580,40 @@ const TicketsService = {
     if (user.role === 'end_user') {
       filters.user_id = user.user_id;
     } else if (user.role === 'it_agent') {
-      filters.assigned_to = user.user_id;
+      // Strict isolation: Agents only see their own location's tickets
+      if (user.location) {
+        filters.location = user.location;
+      } else {
+        // Agent with no location assigned: security measure - restrict to impossible location
+        filters.location = 'UNDEFINED_LOCATION_BLOCK';
+      }
+
+      if (resolvedAssignedTo) {
+        filters.assigned_to = resolvedAssignedTo;
+      }
+
+      if (unassigned === 'true') {
+        filters.assigned_to_is_null = true;
+      }
     } else if (user.role === 'it_manager') {
+      // Strict isolation: Managers only see their own location's tickets
+      if (user.location) filters.location = user.location;
+
       const teamIds = await TicketsModel.listTeamIdsForUser(user.user_id);
-      if (assigned_to) {
-        filters.assigned_to = assigned_to;
+      if (resolvedAssignedTo) {
+        filters.assigned_to = resolvedAssignedTo;
       } else if (unassigned === 'true') {
         filters.assigned_to_is_null = true;
         if (teamIds.length) {
           filters.assigned_team_ids = teamIds;
-        } else {
-          return { tickets: [], pagination: { page: parseInt(page, 10), limit: parseInt(limit, 10), total: 0 } };
         }
       } else if (teamIds.length) {
         const memberIds = await TicketsModel.listTeamMemberIdsForTeams(teamIds);
         filters.assigned_team_ids = teamIds;
         if (memberIds.length) filters.assigned_to_in = memberIds;
-      } else {
-        return { tickets: [], pagination: { page: parseInt(page, 10), limit: parseInt(limit, 10), total: 0 } };
       }
     } else if (user.role === 'system_admin') {
-      if (assigned_to) filters.assigned_to = assigned_to;
+      if (resolvedAssignedTo) filters.assigned_to = resolvedAssignedTo;
       if (unassigned === 'true') filters.assigned_to_is_null = true;
     } else {
       filters.user_id = user.user_id;
@@ -606,18 +634,28 @@ const TicketsService = {
     if (!ticket) throw new Error('Ticket not found');
     if (user.role === 'end_user' && ticket.user_id !== user.user_id) throw new Error('Forbidden');
     if (user.role === 'it_agent') {
-      if (ticket.assigned_to !== user.user_id && ticket.user_id !== user.user_id) {
-        throw new Error('Forbidden');
+      const isAssigned = ticket.assigned_to === user.user_id || ticket.user_id === user.user_id;
+      const isUnassigned = !ticket.assigned_to;
+      const locationMatch = !user.location || ticket.location === user.location;
+
+      if (!(isAssigned || isUnassigned) || !locationMatch) {
+        throw new Error('Forbidden: Outside of location or assignment');
       }
     }
     if (user.role === 'it_manager') {
+      // 1. Check basic location match first
+      if (user.location && ticket.location !== user.location) {
+        throw new Error('Forbidden: Outside of managed location');
+      }
+
+      // 2. Original team-based logic
       const teamIds = await TicketsModel.listTeamIdsForUser(user.user_id);
       if (teamIds.length) {
         const memberIds = await TicketsModel.listTeamMemberIdsForTeams(teamIds);
         const inTeam = teamIds.includes(ticket.assigned_team);
         const assignedToMember = ticket.assigned_to && memberIds.includes(ticket.assigned_to);
         if (!inTeam && !assignedToMember && ticket.assigned_to !== user.user_id) {
-          throw new Error('Forbidden');
+          throw new Error('Forbidden: Not in your managed teams');
         }
       } else if (ticket.assigned_to !== user.user_id) {
         throw new Error('Forbidden');
@@ -690,14 +728,30 @@ const TicketsService = {
       value.overridden_at = new Date();
     }
 
+    if (user.role === 'it_agent' || user.role === 'it_manager') {
+      if (user.location && existing.location !== user.location) {
+        throw new Error('Forbidden: Outside of regional boundary');
+      }
+    }
+
     if (user.role === 'it_agent') {
       const isAssigned = existing.assigned_to === user.user_id;
       const isUnassigned = !existing.assigned_to;
-      if (!isAssigned && !isUnassigned) throw new Error('Forbidden');
+      if (!isAssigned && !isUnassigned) throw new Error('Forbidden: Not assigned');
     }
 
     if (value.assigned_to && (user.role === 'it_agent' || user.role === 'end_user')) {
-      throw new Error('Forbidden');
+      // Allow IT agent to assign to themselves only
+      if (user.role === 'it_agent' && value.assigned_to === user.user_id) {
+        // proceed
+      } else {
+        throw new Error('Forbidden');
+      }
+    }
+
+    // Auto-assign to me if status set to In Progress and unassigned
+    if (value.status === 'In Progress' && !existing.assigned_to && !value.assigned_to) {
+      value.assigned_to = user.user_id;
     }
 
     // Validate assignment hierarchy
@@ -713,7 +767,7 @@ const TicketsService = {
       if (!teamIds.length) throw new Error('Forbidden: No teams assigned');
       const memberIds = await TicketsModel.listTeamMemberIdsForTeams(teamIds);
       if (!memberIds.includes(value.assigned_to)) {
-        throw new Error('Forbidden: Assignee must be a member of your teams');
+        throw new Error('Forbidden: Assignee must be a member of your teams. Use the "Manage Team" console on your dashboard to add agents to your team first.');
       }
     }
 
@@ -725,7 +779,10 @@ const TicketsService = {
     }
 
     if (statusChanged && ['Resolved', 'Closed'].includes(value.status)) {
-      if (!value.resolution_summary || !value.resolution_category || !value.root_cause) {
+      const hasNewFields = value.resolution_summary && value.resolution_category && value.root_cause;
+      const hasExistingFields = existing.resolution_summary && existing.resolution_category && existing.root_cause;
+
+      if (!hasNewFields && !hasExistingFields) {
         throw new Error('Resolution summary, category, and root cause are required');
       }
       if (
@@ -740,6 +797,7 @@ const TicketsService = {
       const now = new Date();
       value.resolved_at = now;
       value.resolved_by = user.user_id;
+      // Auto-archive resolved/closed tickets
       value.is_archived = true;
       value.archived_at = now;
       // Set pending confirmation and pause SLA
@@ -815,6 +873,10 @@ const TicketsService = {
 
         value.sla_paused_at = null;
       }
+    }
+
+    if (['it_agent', 'it_manager', 'system_admin'].includes(user.role) && !existing.first_response_at) {
+      value.first_response_at = new Date();
     }
 
     const updated = await TicketsModel.updateTicket(ticketId, value);
@@ -1192,18 +1254,33 @@ const TicketsService = {
         session_id: meta.sessionId,
       });
     }
-
     return { request };
   },
 
   async reviewPriorityOverride({ ticketId, requestId, payload, user, meta }) {
-    if (user.role !== 'system_admin') throw new AppError('Forbidden', 403);
+    if (!['it_manager', 'system_admin'].includes(user.role)) throw new AppError('Forbidden', 403);
+
+    const ticket = await TicketsModel.getTicketById(ticketId);
+    if (!ticket) throw new AppError('Ticket not found', 404);
+
+    if (user.role === 'it_manager') {
+      if (user.location && ticket.location !== user.location) {
+        throw new Error('Forbidden: Outside of managed location');
+      }
+      const teamIds = await TicketsModel.listTeamIdsForUser(user.user_id);
+      if (!teamIds.includes(ticket.assigned_team) && ticket.assigned_to !== user.user_id) {
+        // Check if ticket is assigned to anyone in manager's teams
+        const memberIds = await TicketsModel.listTeamMemberIdsForTeams(teamIds);
+        if (!memberIds.includes(ticket.assigned_to)) {
+          throw new Error('Forbidden: Not in your managed teams');
+        }
+      }
+    }
+
     const schema = Joi.object({ status: Joi.string().valid('approved', 'rejected').required() });
     const { error, value } = schema.validate(payload, { abortEarly: false });
     if (error) throw new AppError(error.details.map((d) => d.message).join(', '), 400);
 
-    const ticket = await TicketsModel.getTicketById(ticketId);
-    if (!ticket) throw new AppError('Ticket not found', 404);
 
     const request = await PriorityOverrideModel.getRequestById(requestId);
     if (!request || request.ticket_id !== ticketId) throw new AppError('Request not found', 404);
@@ -1274,7 +1351,7 @@ const TicketsService = {
       if (!teamIds.length) throw new Error('Forbidden: No teams assigned');
       const memberIds = await TicketsModel.listTeamMemberIdsForTeams(teamIds);
       if (!memberIds.includes(value.assigned_to)) {
-        throw new Error('Forbidden: Assignee must be a member of your teams');
+        throw new Error('Forbidden: Assignee must be a member of your teams. Use the "Manage Team" console on your dashboard to add agents to your team first.');
       }
 
       const isAllowed = tickets.every((ticket) => {

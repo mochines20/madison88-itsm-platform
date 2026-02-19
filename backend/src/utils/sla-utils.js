@@ -4,6 +4,18 @@
  * Calculates SLA due dates respecting global defaults.
  */
 
+const LOCATION_TIMEZONES = {
+    'Philippines': 'Asia/Manila',
+    'Indonesia': 'Asia/Jakarta',
+    'China': 'Asia/Shanghai',
+    'US': 'America/New_York', // Default to Eastern Time
+    'Default': 'UTC'
+};
+
+function getTimezoneForLocation(location) {
+    return LOCATION_TIMEZONES[location] || LOCATION_TIMEZONES['Default'];
+}
+
 /**
  * Parse a TIME string (HH:MM) into { hours, minutes }.
  */
@@ -55,8 +67,8 @@ function jsToIsoDayOfWeek(jsDay) {
 /**
  * Check if a given date/time falls within business hours.
  */
-function isBusinessTime(date) {
-    const tz = 'UTC';
+function isBusinessTime(date, location = 'Default') {
+    const tz = getTimezoneForLocation(location);
     const localTime = getDateInTimezone(date, tz);
     const isoDay = jsToIsoDayOfWeek(localTime.dayOfWeek);
     const businessDays = [1, 2, 3, 4, 5];
@@ -76,8 +88,8 @@ function isBusinessTime(date) {
  * Get the remaining business minutes in the current business day from a given UTC date.
  * Returns 0 if outside business hours.
  */
-function getRemainingBusinessMinutesToday(date) {
-    const tz = 'UTC';
+function getRemainingBusinessMinutesToday(date, location = 'Default') {
+    const tz = getTimezoneForLocation(location);
     const localTime = getDateInTimezone(date, tz);
     const isoDay = jsToIsoDayOfWeek(localTime.dayOfWeek);
     const businessDays = [1, 2, 3, 4, 5];
@@ -111,10 +123,10 @@ function getBusinessMinutesPerDay() {
  * @param {number} hours - Number of business hours to add
  * @returns {Date} - UTC date when the SLA is due
  */
-function addBusinessHours(startDate, hours) {
+function addBusinessHours(startDate, hours, location = 'Default') {
     let remainingMinutes = hours * 60;
     const current = new Date(startDate.getTime());
-    const tz = 'UTC';
+    const tz = getTimezoneForLocation(location);
 
     // Safety limit: prevent infinite loops (max 365 days)
     const maxIterations = 365 * 24 * 60;
@@ -123,7 +135,7 @@ function addBusinessHours(startDate, hours) {
     while (remainingMinutes > 0 && iterations < maxIterations) {
         iterations++;
 
-        const remainingToday = getRemainingBusinessMinutesToday(current);
+        const remainingToday = getRemainingBusinessMinutesToday(current, location);
 
         if (remainingToday <= 0) {
             // Not in business hours — advance to next minute
@@ -167,8 +179,8 @@ function addBusinessHours(startDate, hours) {
  * @param {number} businessDays - Number of business days to add
  * @returns {Date} - UTC date after adding business days
  */
-function addBusinessDays(startDate, businessDays) {
-    const tz = 'UTC';
+function addBusinessDays(startDate, businessDays, location = 'Default') {
+    const tz = getTimezoneForLocation(location);
     const result = new Date(startDate);
     const bizDays = [1, 2, 3, 4, 5];
     let added = 0;

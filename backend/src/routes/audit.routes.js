@@ -46,7 +46,12 @@ router.get('/export', authenticate, authorize(['it_manager', 'system_admin']), a
     }
     if (ticket_id) {
       values.push(ticket_id);
-      filters.push(`a.ticket_id = $${values.length}`);
+      filters.push(`a.ticket_idScope = $${values.length}`);
+    }
+
+    if (req.user.role === 'it_manager' && req.user.location) {
+      values.push(req.user.location);
+      filters.push(`(t.location = $${values.length} OR t.location IS NULL)`);
     }
 
     const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : '';

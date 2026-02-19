@@ -21,7 +21,7 @@ const categories = [
   "Other",
 ];
 
-const locations = ["Philippines", "US", "Indonesia", "Other"];
+const locations = ["Philippines", "US", "Indonesia", "China", "Other"];
 const priorities = ["P1", "P2", "P3", "P4"];
 const ticketTypes = [
   { value: "incident", label: "Incident" },

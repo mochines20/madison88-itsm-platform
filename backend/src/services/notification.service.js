@@ -1,5 +1,6 @@
 const axios = require('axios');
 const nodemailer = require('nodemailer');
+const db = require('../config/database');
 const logger = require('../utils/logger');
 
 let transporter = null;
@@ -127,7 +128,7 @@ async function sendEmail({ to, subject, text, templateParams = {} }) {
       `INSERT INTO audit_logs (user_id, action_type, entity_type, entity_id, old_value, new_value, description, ip_address, user_agent, session_id, timestamp)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())`,
       [
-        null,
+        '62530f75-a4d6-4d57-9778-0eae86e00f12', // Fallback System Admin ID
         'email_sent',
         'notification',
         null,
@@ -220,12 +221,41 @@ async function sendTicketResolvedNotice({ ticket, requester }) {
 }
 
 function collectRecipientEmails(recipients = []) {
-  const emails = recipients.map((recipient) => recipient?.email).filter(Boolean);
-  return Array.from(new Set(emails));
+  // Normalize recipients list - can be array of objects with .email or array of strings
+  const emails = recipients.map((r) => {
+    if (typeof r === 'string') return r.trim();
+    return r?.email?.trim();
+  }).filter(Boolean);
+
+  // Robust Validation: Basic format check and filter out test/dummy domains
+  const validEmails = emails.filter((email) => {
+    // 1. Basic Regex for email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) return false;
+
+    // 2. Filter out known dummy/test domains
+    const lowerEmail = email.toLowerCase();
+    const dummyDomains = [
+      'test.com',
+      'example.com',
+      'dummy.com',
+      'localhost',
+      'invalid.com'
+    ];
+
+    return !dummyDomains.some(domain => lowerEmail.endsWith(`@${domain}`) || lowerEmail.endsWith(`.${domain}`));
+  });
+
+  return Array.from(new Set(validEmails));
 }
 
 async function sendNewTicketNotice({ ticket, requester, recipients }) {
-  const uniqueRecipients = collectRecipientEmails(recipients);
+  const allRecipients = [...(recipients || [])];
+  if (requester?.email) {
+    allRecipients.push(requester.email);
+  }
+
+  const uniqueRecipients = collectRecipientEmails(allRecipients);
   if (!uniqueRecipients.length) return false;
 
   const subject = `New Ticket: ${ticket.ticket_number}`;
@@ -246,27 +276,44 @@ async function sendTicketAssignedNotice({ ticket, assignee, leads = [] }) {
   const uniqueRecipients = collectRecipientEmails(recipients);
   if (!uniqueRecipients.length) return false;
 
-  const subject = `Ticket Assigned: ${ticket.ticket_number}`;
+  const subject = `Ticket Assigned: ${ticket.ticket_number} - ${ticket.title}`;
   const text = [
-    `Ticket ${ticket.ticket_number} has been assigned.`,
+    `Hello,`,
+    '',
+    `Ticket ${ticket.ticket_number} has been assigned to ${assignee?.full_name || 'an agent'}.`,
+    '',
     `Title: ${ticket.title}`,
     `Priority: ${ticket.priority}`,
-    assignee?.full_name ? `Assignee: ${assignee.full_name}` : null,
-    assignee?.email ? `Assignee Email: ${assignee.email}` : null,
+    `Category: ${ticket.category}`,
+    `Location: ${ticket.location}`,
+    '',
+    `Please log in to the Madison88 ITSM Platform to review the ticket details.`,
   ].filter(Boolean).join('\n');
 
-  return sendEmail({ to: uniqueRecipients.join(','), subject, text });
+  return sendEmail({
+    to: uniqueRecipients.join(','),
+    subject,
+    text,
+    templateParams: {
+      ticket_number: ticket.ticket_number,
+      title: ticket.title,
+      priority: ticket.priority,
+      assignee_name: assignee?.full_name,
+      assignee_email: assignee?.email,
+    },
+  });
 }
 
 async function sendTicketReopenedNotice({ ticket, requester, assignee, reopenedBy }) {
-  const recipients = [];
+  const rawRecipients = [];
   if (requester?.email && requester.user_id !== reopenedBy?.user_id) {
-    recipients.push(requester.email);
+    rawRecipients.push(requester.email);
   }
   if (assignee?.email) {
-    recipients.push(assignee.email);
+    rawRecipients.push(assignee.email);
   }
-  const uniqueRecipients = Array.from(new Set(recipients));
+
+  const uniqueRecipients = collectRecipientEmails(rawRecipients);
   if (!uniqueRecipients.length) return false;
 
   const subject = `Ticket Reopened: ${ticket.ticket_number}`;

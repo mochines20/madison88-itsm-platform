@@ -14,7 +14,7 @@ const registerSchema = Joi.object({
     .valid('end_user', 'it_agent', 'it_manager', 'system_admin')
     .default('end_user'),
   department: Joi.string().allow('', null),
-  location: Joi.string().valid('Philippines', 'US', 'Indonesia', 'Other').allow('', null),
+  location: Joi.string().valid('Philippines', 'US', 'Indonesia', 'China', 'Other').allow('', null),
   phone: Joi.string().allow('', null),
 }).required();
 
