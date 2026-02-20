@@ -71,7 +71,7 @@ const SignupPage = () => {
 
         setLoading(true);
         try {
-            await apiClient.post("/auth/register", {
+            await apiClient.post("/api/auth/register", {
                 email: formData.email,
                 full_name: formData.fullName,
                 password: formData.password,

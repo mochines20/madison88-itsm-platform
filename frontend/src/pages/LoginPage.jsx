@@ -69,7 +69,7 @@ const LoginPage = ({ onLogin }) => {
 
     setLoading(true);
     try {
-      const res = await apiClient.post("/auth/login", { email, password });
+      const res = await apiClient.post("/api/auth/login", { email, password });
       onLogin(res.data.token, res.data.user);
     } catch (err) {
       setError(err.response?.data?.message || "Login failed");
