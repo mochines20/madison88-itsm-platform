@@ -214,7 +214,8 @@ async function sendSlaEscalationNotice({ ticket, escalation, assignee, leads }) 
 }
 
 async function sendTicketResolvedNotice({ ticket, requester }) {
-  if (!requester?.email) return false;
+  const recipients = collectRecipientEmails([requester]);
+  if (!recipients.length) return false;
 
   const ticketUrl = getTicketUrl(ticket.ticket_id);
   const subject = `Ticket Resolved: ${ticket.ticket_number}`;
@@ -229,7 +230,7 @@ async function sendTicketResolvedNotice({ ticket, requester }) {
   ].join('\n');
 
   return sendEmail({
-    to: requester.email,
+    to: recipients.join(','),
     subject,
     text,
     templateParams: {
@@ -252,36 +253,24 @@ function collectRecipientEmails(recipients = []) {
 
   logger.debug('Normalizing recipients for email collection', { rawCount: recipients.length, emailCount: emails.length });
 
-  // Robust Validation: Basic format check and filter out test/dummy domains
+  // Basic format validation
   const validEmails = emails.filter((email) => {
-    // 1. Basic Regex for email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       logger.warn('Skipping recipient with invalid format', { email });
       return false;
     }
-
-    // 2. Filter out known dummy/test domains
-    const lowerEmail = email.toLowerCase();
-    const dummyDomains = [
-      'test.com',
-      'example.com',
-      'dummy.com',
-      'localhost',
-      'invalid.com'
-    ];
-
-    const isDummy = dummyDomains.some(domain => lowerEmail.endsWith(`@${domain}`) || lowerEmail.endsWith(`.${domain}`));
-    if (isDummy) {
-      logger.info('Skipping recipient with dummy domain', { email });
-      return false;
-    }
-
     return true;
   });
 
   const unique = Array.from(new Set(validEmails));
-  logger.info('Collection complete', { inputCount: recipients.length, validCount: unique.length, recipients: unique });
+
+  if (recipients.length > 0 && unique.length === 0) {
+    logger.warn('Email collection resulted in zero valid recipients', { inputCount: recipients.length });
+  } else {
+    logger.info('Collection complete', { inputCount: recipients.length, validCount: unique.length, recipients: unique });
+  }
+
   return unique;
 }
 
@@ -348,16 +337,8 @@ async function sendTicketAssignedNotice({ ticket, assignee, leads = [] }) {
 }
 
 async function sendTicketReopenedNotice({ ticket, requester, assignee, reopenedBy }) {
-  const rawRecipients = [];
-  if (requester?.email && requester.user_id !== reopenedBy?.user_id) {
-    rawRecipients.push(requester.email);
-  }
-  if (assignee?.email) {
-    rawRecipients.push(assignee.email);
-  }
-
-  const uniqueRecipients = collectRecipientEmails(rawRecipients);
-  if (!uniqueRecipients.length) return false;
+  const recipients = collectRecipientEmails([requester, assignee]);
+  if (!recipients.length) return false;
 
   const ticketUrl = getTicketUrl(ticket.ticket_id);
   const subject = `Ticket Reopened: ${ticket.ticket_number}`;
@@ -371,7 +352,7 @@ async function sendTicketReopenedNotice({ ticket, requester, assignee, reopenedB
     `Please review the ticket and provide a resolution.`,
   ].join('\n');
 
-  return sendEmail({ to: uniqueRecipients.join(','), subject, text, templateParams: { ticket_url: ticketUrl } });
+  return sendEmail({ to: recipients.join(','), subject, text, templateParams: { ticket_url: ticketUrl } });
 }
 
 async function sendCriticalTicketNotice({ ticket, requester, recipients }) {
