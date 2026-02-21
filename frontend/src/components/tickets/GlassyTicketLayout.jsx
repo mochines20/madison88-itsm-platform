@@ -5,71 +5,80 @@ import TicketActionPanel from "./TicketActionPanel";
 import AuditLogModal from "./AuditLogModal";
 
 const GlassyTicketLayout = ({
-    ticket,
-    user,
-    comments,
-    assets,
-    audit,
-    onCommentAdded,
-    onTicketUpdated,
-    onClose
+  ticket,
+  user,
+  comments,
+  assets,
+  audit,
+  onCommentAdded,
+  onTicketUpdated,
+  onAttachmentUploaded,
+  onClose,
 }) => {
-    const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
+  const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
 
-    return (
-        <div className="glassy-workspace animate-fade-in">
-            <div className="workspace-header">
-                <div className="header-left">
-                    <button onClick={onClose} className="back-btn">← BACK</button>
-                    <span className="breadcrumb">{ticket.ticket_number} <strong>{ticket.title}</strong></span>
-                </div>
-                <div className="header-right">
-                    <button
-                        className="header-action-btn"
-                        onClick={() => setIsAuditModalOpen(true)}
-                    >
-                        TICKET LOG
-                    </button>
-                    <span className={`status-pill ${ticket.status.toLowerCase().replace(' ', '-')}`}>
-                        {ticket.status.toUpperCase()}
-                    </span>
-                </div>
-            </div>
+  return (
+    <div className="glassy-workspace animate-fade-in">
+      <div className="workspace-header">
+        <div className="header-left">
+          <button onClick={onClose} className="back-btn">
+            ← BACK
+          </button>
+          <span className="breadcrumb">
+            {ticket.ticket_number} <strong>{ticket.title}</strong>
+          </span>
+        </div>
+        <div className="header-right">
+          <button
+            className="header-action-btn"
+            onClick={() => setIsAuditModalOpen(true)}
+          >
+            TICKET LOG
+          </button>
+          <span
+            className={`status-pill ${ticket.status.toLowerCase().replace(" ", "-")}`}
+          >
+            {ticket.status.toUpperCase()}
+          </span>
+        </div>
+      </div>
 
-            <div className="workspace-grid">
-                {/* Left: Context */}
-                <div className="workspace-col col-left">
-                    <TicketContextPanel ticket={ticket} user={user} assets={assets} />
-                </div>
+      <div className="workspace-grid">
+        {/* Left: Context */}
+        <div className="workspace-col col-left">
+          <TicketContextPanel ticket={ticket} user={user} assets={assets} />
+        </div>
 
-                {/* Middle: Conversation */}
-                <div className="workspace-col col-main">
-                    <TicketConversation
-                        ticketId={ticket.ticket_id}
-                        comments={comments}
-                        audit={audit}
-                        onCommentAdded={onCommentAdded}
-                    />
-                </div>
+        {/* Middle: Conversation */}
+        <div className="workspace-col col-main">
+          <TicketConversation
+            ticketId={ticket.ticket_id}
+            user={user}
+            comments={comments}
+            audit={audit}
+            onCommentAdded={onCommentAdded}
+            onAttachmentUploaded={onAttachmentUploaded}
+          />
+        </div>
 
-                {/* Right: Actions */}
-                <div className="workspace-col col-right">
-                    <TicketActionPanel
-                        ticket={ticket}
-                        user={user}
-                        onUpdate={onTicketUpdated}
-                    />
-                </div>
-            </div>
+        {/* Right: Actions */}
+        <div className="workspace-col col-right">
+          <TicketActionPanel
+            ticket={ticket}
+            user={user}
+            onUpdate={onTicketUpdated}
+          />
+        </div>
+      </div>
 
-            <AuditLogModal
-                isOpen={isAuditModalOpen}
-                onClose={() => setIsAuditModalOpen(false)}
-                audit={audit}
-                user={user}
-            />
+      <AuditLogModal
+        isOpen={isAuditModalOpen}
+        onClose={() => setIsAuditModalOpen(false)}
+        audit={audit}
+        user={user}
+      />
 
-            <style>{`
+      <style>{`
         .glassy-workspace {
             display: flex;
             flex-direction: column;
@@ -234,8 +243,8 @@ const GlassyTicketLayout = ({
             }
         }
       `}</style>
-        </div>
-    );
+    </div>
+  );
 };
 
 export default GlassyTicketLayout;

@@ -1,127 +1,194 @@
 import React, { useState, useRef, useEffect } from "react";
 import apiClient from "../../api/client";
 
-const TicketConversation = ({ ticketId, comments, audit = [], onCommentAdded }) => {
-    const [newComment, setNewComment] = useState("");
-    const [isInternal, setIsInternal] = useState(false);
-    const [submitting, setSubmitting] = useState(false);
-    const scrollRef = useRef(null);
+const TicketConversation = ({
+  ticketId,
+  user,
+  comments,
+  audit = [],
+  onCommentAdded,
+  onAttachmentUploaded,
+}) => {
+  const [newComment, setNewComment] = useState("");
+  const [isInternal, setIsInternal] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef(null);
+  const scrollRef = useRef(null);
+  const canAttach = ["it_agent", "it_manager", "system_admin"].includes(
+    user?.role,
+  );
 
-    const cannedResponses = [
-        "Hello, I'm looking into your issue and will update you shortly.",
-        "Could you please provide more details or a screenshot?",
-        "I have resolved this ticket. Please let me know if you need anything else.",
-        "This ticket is being escalated to the relevant team.",
-        "Please try restarting your device and checking again."
-    ];
+  const cannedResponses = [
+    "Hello, I'm looking into your issue and will update you shortly.",
+    "Could you please provide more details or a screenshot?",
+    "I have resolved this ticket. Please let me know if you need anything else.",
+    "This ticket is being escalated to the relevant team.",
+    "Please try restarting your device and checking again.",
+  ];
 
-    const handleCannedResponse = (e) => {
-        const val = e.target.value;
-        if (!val) return;
-        setNewComment(prev => prev ? prev + "\n" + val : val);
-        e.target.value = ""; // Reset select
-    };
+  const handleCannedResponse = (e) => {
+    const val = e.target.value;
+    if (!val) return;
+    setNewComment((prev) => (prev ? prev + "\n" + val : val));
+    e.target.value = ""; // Reset select
+  };
 
-    const timeline = comments.map(c => ({
-        ...c,
-        type: 'comment',
-        timestamp: new Date(c.created_at)
-    })).sort((a, b) => a.timestamp - b.timestamp);
+  const timeline = comments
+    .map((c) => ({
+      ...c,
+      type: "comment",
+      timestamp: new Date(c.created_at),
+    }))
+    .sort((a, b) => a.timestamp - b.timestamp);
 
-    useEffect(() => {
-        if (scrollRef.current) {
-            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-        }
-    }, [timeline]);
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [timeline]);
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        if (!newComment.trim()) return;
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!newComment.trim()) return;
 
-        try {
-            setSubmitting(true);
-            const res = await apiClient.post(`/tickets/${ticketId}/comments`, {
-                comment_text: newComment,
-                is_internal: isInternal,
-            });
-            setNewComment("");
-            if (onCommentAdded) onCommentAdded(res.data.data.comment);
-        } catch (err) {
-            console.error("Failed to post comment:", err);
-        } finally {
-            setSubmitting(false);
-        }
-    };
+    try {
+      setSubmitting(true);
+      const res = await apiClient.post(`/tickets/${ticketId}/comments`, {
+        comment_text: newComment,
+        is_internal: isInternal,
+      });
+      setNewComment("");
+      if (onCommentAdded) onCommentAdded(res.data.data.comment);
+    } catch (err) {
+      console.error("Failed to post comment:", err);
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
-    return (
-        <div className="ticket-conversation glass">
-            <div className="conversation-header">
-                <h3>ACTIVITY STREAM</h3>
-            </div>
+  const handleAttachFiles = async (files) => {
+    if (!files || files.length === 0) return;
+    try {
+      setUploading(true);
+      const formData = new FormData();
+      Array.from(files).forEach((file) => formData.append("files", file));
+      await apiClient.post(`/tickets/${ticketId}/attachments`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      alert("Files attached successfully!");
+      if (onAttachmentUploaded) onAttachmentUploaded();
+    } catch (err) {
+      console.error("Attach failed", err);
+      alert(err.response?.data?.message || "Failed to upload attachments");
+    } finally {
+      setUploading(false);
+    }
+  };
 
-            <div className="comments-list" ref={scrollRef}>
-                {timeline.length === 0 ? (
-                    <div className="empty-state">No activity yet.</div>
-                ) : (
-                    timeline.map((item) => (
-                        <div
-                            key={`comment-${item.comment_id}`}
-                            className={`comment-bubble ${item.is_internal ? 'internal' : 'public'}`}
-                        >
-                            <div className="comment-meta">
-                                <strong>{item.full_name}</strong>
-                                <span className="role-badge">{item.role?.replace('_', ' ')}</span>
-                                <span className="timestamp">
-                                    {item.timestamp.toLocaleString()}
-                                </span>
-                                {item.is_internal && <span className="internal-badge">INTERNAL NOTE</span>}
-                            </div>
-                            <div className="comment-body">
-                                {item.comment_text}
-                            </div>
-                        </div>
-                    ))
+  return (
+    <div className="ticket-conversation glass">
+      <div className="conversation-header">
+        <h3>ACTIVITY STREAM</h3>
+      </div>
+
+      <div className="comments-list" ref={scrollRef}>
+        {timeline.length === 0 ? (
+          <div className="empty-state">No activity yet.</div>
+        ) : (
+          timeline.map((item) => (
+            <div
+              key={`comment-${item.comment_id}`}
+              className={`comment-bubble ${item.is_internal ? "internal" : "public"}`}
+            >
+              <div className="comment-meta">
+                <strong>{item.full_name}</strong>
+                <span className="role-badge">
+                  {item.role?.replace("_", " ")}
+                </span>
+                <span className="timestamp">
+                  {item.timestamp.toLocaleString()}
+                </span>
+                {item.is_internal && (
+                  <span className="internal-badge">INTERNAL NOTE</span>
                 )}
+              </div>
+              <div className="comment-body">{item.comment_text}</div>
             </div>
+          ))
+        )}
+      </div>
 
-            <div className="comment-input-area">
-                <form onSubmit={handleSubmit}>
-                    <div className="input-group">
-                        <textarea
-                            value={newComment}
-                            onChange={(e) => setNewComment(e.target.value)}
-                            placeholder={isInternal ? "Add an internal note (visible only to IT staff)..." : "Reply to customer..."}
-                            disabled={submitting}
-                        />
-                        <div className="input-overlay">
-                            <label className={`toggle-btn ${isInternal ? 'active' : ''}`}>
-                                <input
-                                    type="checkbox"
-                                    checked={isInternal}
-                                    onChange={(e) => setIsInternal(e.target.checked)}
-                                />
-                                <span>{isInternal ? '🔒 INTERNAL' : '🌍 PUBLIC'}</span>
-                            </label>
-                            <select className="canned-select" onChange={handleCannedResponse} defaultValue="">
-                                <option value="" disabled>RESPONSES...</option>
-                                {cannedResponses.map((res, i) => (
-                                    <option key={i} value={res}>{res.substring(0, 30)}...</option>
-                                ))}
-                            </select>
-                        </div>
-                    </div>
-                    <div className="action-row">
-                        <button type="button" className="attach-btn" disabled>
-                            📎 ATTACH
-                        </button>
-                        <button type="submit" className="send-btn" disabled={submitting || !newComment.trim()}>
-                            {submitting ? 'SENDING...' : 'SEND MESSAGE'}
-                        </button>
-                    </div>
-                </form>
+      <div className="comment-input-area">
+        <form onSubmit={handleSubmit}>
+          <div className="input-group">
+            <textarea
+              value={newComment}
+              onChange={(e) => setNewComment(e.target.value)}
+              placeholder={
+                isInternal
+                  ? "Add an internal note (visible only to IT staff)..."
+                  : "Reply to customer..."
+              }
+              disabled={submitting}
+            />
+            <div className="input-overlay">
+              <label className={`toggle-btn ${isInternal ? "active" : ""}`}>
+                <input
+                  type="checkbox"
+                  checked={isInternal}
+                  onChange={(e) => setIsInternal(e.target.checked)}
+                />
+                <span>{isInternal ? "🔒 INTERNAL" : "🌍 PUBLIC"}</span>
+              </label>
+              <select
+                className="canned-select"
+                onChange={handleCannedResponse}
+                defaultValue=""
+              >
+                <option value="" disabled>
+                  RESPONSES...
+                </option>
+                {cannedResponses.map((res, i) => (
+                  <option key={i} value={res}>
+                    {res.substring(0, 30)}...
+                  </option>
+                ))}
+              </select>
             </div>
+          </div>
+          <div className="action-row">
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              style={{ display: "none" }}
+              onChange={(e) => handleAttachFiles(e.target.files)}
+            />
+            {canAttach && (
+              <button
+                type="button"
+                className="attach-btn"
+                onClick={() =>
+                  fileInputRef.current && fileInputRef.current.click()
+                }
+                disabled={uploading}
+              >
+                {uploading ? "Uploading..." : "📎 ATTACH"}
+              </button>
+            )}
+            <button
+              type="submit"
+              className="send-btn"
+              disabled={submitting || !newComment.trim()}
+            >
+              {submitting ? "SENDING..." : "SEND MESSAGE"}
+            </button>
+          </div>
+        </form>
+      </div>
 
-            <style>{`
+      <style>{`
         .ticket-conversation {
             display: flex;
             flex-direction: column;
@@ -342,8 +409,8 @@ const TicketConversation = ({ ticketId, comments, audit = [], onCommentAdded }) 
             }
         }
       `}</style>
-        </div>
-    );
+    </div>
+  );
 };
 
 export default TicketConversation;

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import apiClient from "../api/client";
 import { hasMaxLength, hasMinLength, isBlank } from "../utils/validation";
 import { joinTicket, leaveTicket, onPresenceUpdate } from "../api/socket";
@@ -78,8 +78,11 @@ const TicketDetailPage = ({
   const canAssign = isManager || isAdmin;
   const canOverridePriority = isAdmin;
   const canRequestPriorityOverride = isManager;
-  const isAssignedToUser = ticket?.assigned_to && ticket.assigned_to === user?.user_id;
-  const canComment = isEndUser ? ticket?.user_id === user?.user_id : isAssignedToUser;
+  const isAssignedToUser =
+    ticket?.assigned_to && ticket.assigned_to === user?.user_id;
+  const canComment = isEndUser
+    ? ticket?.user_id === user?.user_id
+    : isAssignedToUser;
   const canEscalate = !!isAssignedToUser;
 
   useEffect(() => {
@@ -149,11 +152,13 @@ const TicketDetailPage = ({
     joinTicket(ticketId, user);
 
     // Presence: Listen for viewer updates
-    const unsubscribePresence = onPresenceUpdate(({ ticketId: incomingId, viewers: updatedViewers }) => {
-      if (String(incomingId) === String(ticketId)) {
-        setViewers(updatedViewers);
-      }
-    });
+    const unsubscribePresence = onPresenceUpdate(
+      ({ ticketId: incomingId, viewers: updatedViewers }) => {
+        if (String(incomingId) === String(ticketId)) {
+          setViewers(updatedViewers);
+        }
+      },
+    );
 
     return () => {
       leaveTicket(ticketId);
@@ -237,12 +242,12 @@ const TicketDetailPage = ({
 
     try {
       const formData = new FormData();
-      Array.from(filesToUpload).forEach(file => {
-        formData.append('files', file);
+      Array.from(filesToUpload).forEach((file) => {
+        formData.append("files", file);
       });
 
       await apiClient.post(`/tickets/${ticketId}/attachments`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+        headers: { "Content-Type": "multipart/form-data" },
       });
 
       setNotice("Files attached successfully!");
@@ -262,7 +267,7 @@ const TicketDetailPage = ({
     const items = (e.clipboardData || e.originalEvent.clipboardData).items;
     const files = [];
     for (const item of items) {
-      if (item.kind === 'file') {
+      if (item.kind === "file") {
         files.push(item.getAsFile());
       }
     }
@@ -270,6 +275,8 @@ const TicketDetailPage = ({
       handleAttachFiles(files);
     }
   };
+
+  const fileInputRef = useRef(null);
 
   const handleDrop = (e) => {
     e.preventDefault();
@@ -296,8 +303,14 @@ const TicketDetailPage = ({
     const isResolving =
       isStatusChange && ["Resolved", "Closed"].includes(status);
     if (isResolving) {
-      if (!resolutionSummary.trim() || !resolutionCategory.trim() || !rootCause.trim()) {
-        setError("Resolution summary, category, and root cause are required before resolving.");
+      if (
+        !resolutionSummary.trim() ||
+        !resolutionCategory.trim() ||
+        !rootCause.trim()
+      ) {
+        setError(
+          "Resolution summary, category, and root cause are required before resolving.",
+        );
         return;
       }
       if (!hasMinLength(resolutionSummary, 5)) {
@@ -530,9 +543,10 @@ const TicketDetailPage = ({
     if (!filePath) return "";
     if (filePath.startsWith("http")) return filePath;
     const normalized = filePath.replace(/\\/g, "/");
-    const baseOrigin = window.location.port === "3000"
-      ? "http://localhost:3001"
-      : window.location.origin;
+    const baseOrigin =
+      window.location.port === "3000"
+        ? "http://localhost:3001"
+        : window.location.origin;
     if (normalized.startsWith("/")) return `${baseOrigin}${normalized}`;
     if (normalized.startsWith("uploads/")) return `${baseOrigin}/${normalized}`;
     const fileName = normalized.split("/").pop();
@@ -549,14 +563,29 @@ const TicketDetailPage = ({
 
   if (loading) {
     return (
-      <div className="panel detail-panel" style={{ animation: 'fadeIn 0.5s ease' }}>
-        <div className="skeleton-shimmer" style={{ height: '40px', width: '70%', marginBottom: '12px' }} />
-        <div className="skeleton-shimmer" style={{ height: '20px', width: '30%', marginBottom: '24px' }} />
+      <div
+        className="panel detail-panel"
+        style={{ animation: "fadeIn 0.5s ease" }}
+      >
+        <div
+          className="skeleton-shimmer"
+          style={{ height: "40px", width: "70%", marginBottom: "12px" }}
+        />
+        <div
+          className="skeleton-shimmer"
+          style={{ height: "20px", width: "30%", marginBottom: "24px" }}
+        />
         <div className="detail-grid">
           {[...Array(11)].map((_, i) => (
             <div key={i}>
-              <div className="skeleton-shimmer" style={{ height: '14px', width: '50%', marginBottom: '4px' }} />
-              <div className="skeleton-shimmer" style={{ height: '20px', width: '80%' }} />
+              <div
+                className="skeleton-shimmer"
+                style={{ height: "14px", width: "50%", marginBottom: "4px" }}
+              />
+              <div
+                className="skeleton-shimmer"
+                style={{ height: "20px", width: "80%" }}
+              />
             </div>
           ))}
         </div>
@@ -565,15 +594,38 @@ const TicketDetailPage = ({
   }
 
   if (error) {
-    return <div className="panel detail-panel error" style={{ animation: 'fadeIn 0.3s ease' }}>{error}</div>;
+    return (
+      <div
+        className="panel detail-panel error"
+        style={{ animation: "fadeIn 0.3s ease" }}
+      >
+        {error}
+      </div>
+    );
   }
 
   if (!ticket) {
-    return <div className="panel detail-panel" style={{ animation: 'fadeIn 0.3s ease' }}>Ticket not found.</div>;
+    return (
+      <div
+        className="panel detail-panel"
+        style={{ animation: "fadeIn 0.3s ease" }}
+      >
+        Ticket not found.
+      </div>
+    );
   }
 
   // GLASSY UI FOR IT STAFF
   if (["it_agent", "it_manager", "system_admin"].includes(user?.role)) {
+    const refreshAttachments = async () => {
+      try {
+        const ticketRes = await apiClient.get(`/tickets/${ticketId}`);
+        setAttachments(ticketRes.data.data.attachments || []);
+      } catch (err) {
+        console.error("Failed to refresh attachments", err);
+      }
+    };
+
     return (
       <GlassyTicketLayout
         ticket={ticket}
@@ -586,6 +638,7 @@ const TicketDetailPage = ({
           setTicket(updatedTicket);
           if (onUpdated) onUpdated();
         }}
+        onAttachmentUploaded={refreshAttachments}
         onClose={onClose}
       />
     );
@@ -595,19 +648,35 @@ const TicketDetailPage = ({
     isEndUser && ["New", "Pending"].includes(ticket.status);
 
   return (
-    <div className="panel detail-panel" style={{ animation: 'slideUp 0.6s cubic-bezier(0.2, 0, 0, 1) both' }}>
+    <div
+      className="panel detail-panel"
+      style={{ animation: "slideUp 0.6s cubic-bezier(0.2, 0, 0, 1) both" }}
+    >
       <div className="detail-header">
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+              flexWrap: "wrap",
+            }}
+          >
             <h2>{ticket.title}</h2>
             {viewers.length > 1 && (
               <div className="presence-indicators">
-                {viewers.filter(v => v.user_id !== user.user_id).map(viewer => (
-                  <span key={viewer.user_id} className="presence-pill" title={viewer.full_name}>
-                    <span className="presence-dot online"></span>
-                    {viewer.full_name}
-                  </span>
-                ))}
+                {viewers
+                  .filter((v) => v.user_id !== user.user_id)
+                  .map((viewer) => (
+                    <span
+                      key={viewer.user_id}
+                      className="presence-pill"
+                      title={viewer.full_name}
+                    >
+                      <span className="presence-dot online"></span>
+                      {viewer.full_name}
+                    </span>
+                  ))}
               </div>
             )}
           </div>
@@ -670,7 +739,7 @@ const TicketDetailPage = ({
         <div>
           <span>SLA Remaining (mins)</span>
           <strong>
-            {['Resolved', 'Closed'].includes(ticket?.status)
+            {["Resolved", "Closed"].includes(ticket?.status)
               ? "Stopped"
               : (ticket.sla_status?.resolution_remaining_minutes ?? "N/A")}
           </strong>
@@ -767,7 +836,8 @@ const TicketDetailPage = ({
                 <option value="">Unassigned</option>
                 {agents.map((agent) => (
                   <option key={agent.user_id} value={agent.user_id}>
-                    {agent.full_name || agent.email} {isAdmin && `(${agent.role})`}
+                    {agent.full_name || agent.email}{" "}
+                    {isAdmin && `(${agent.role})`}
                   </option>
                 ))}
               </select>
@@ -826,9 +896,13 @@ const TicketDetailPage = ({
                     }}
                   />
                   {resolutionPhoto && (
-                    <div className="attachment-actions" style={{ marginTop: 6 }}>
+                    <div
+                      className="attachment-actions"
+                      style={{ marginTop: 6 }}
+                    >
                       <span className="muted">
-                        {resolutionPhoto.name} ({(resolutionPhoto.size / 1024).toFixed(1)} KB)
+                        {resolutionPhoto.name} (
+                        {(resolutionPhoto.size / 1024).toFixed(1)} KB)
                       </span>
                       <button
                         type="button"
@@ -855,18 +929,31 @@ const TicketDetailPage = ({
       )}
 
       {canRequestPriorityOverride && (
-        <div className="detail-section" style={{
-          backgroundColor: "rgba(26, 58, 92, 0.4)",
-          borderRadius: "8px",
-          padding: "20px",
-          marginBottom: "20px",
-          border: "1px solid rgba(42, 74, 106, 0.3)"
-        }}>
-          <h3 style={{ margin: "0 0 12px 0", fontSize: "18px", fontWeight: "600", color: "#e0e0e0" }}>
+        <div
+          className="detail-section"
+          style={{
+            backgroundColor: "rgba(26, 58, 92, 0.4)",
+            borderRadius: "8px",
+            padding: "20px",
+            marginBottom: "20px",
+            border: "1px solid rgba(42, 74, 106, 0.3)",
+          }}
+        >
+          <h3
+            style={{
+              margin: "0 0 12px 0",
+              fontSize: "18px",
+              fontWeight: "600",
+              color: "#e0e0e0",
+            }}
+          >
             Request Priority Override
           </h3>
           {notice && (
-            <div className="panel success" style={{ marginBottom: "16px", padding: "12px" }}>
+            <div
+              className="panel success"
+              style={{ marginBottom: "16px", padding: "12px" }}
+            >
               {notice}
             </div>
           )}
@@ -882,11 +969,15 @@ const TicketDetailPage = ({
                   border: "1px solid rgba(58, 90, 122, 0.4)",
                   borderRadius: "6px",
                   color: "#e0e0e0",
-                  fontSize: "14px"
+                  fontSize: "14px",
                 }}
               >
                 {priorityOptions.map((option) => (
-                  <option key={option} value={option} style={{ backgroundColor: "#0a1a2a" }}>
+                  <option
+                    key={option}
+                    value={option}
+                    style={{ backgroundColor: "#0a1a2a" }}
+                  >
                     {option}
                   </option>
                 ))}
@@ -907,7 +998,7 @@ const TicketDetailPage = ({
                   color: "#e0e0e0",
                   fontSize: "14px",
                   fontFamily: "inherit",
-                  resize: "vertical"
+                  resize: "vertical",
                 }}
               />
             </label>
@@ -982,7 +1073,9 @@ const TicketDetailPage = ({
         <p>{ticket.business_impact}</p>
       </div>
 
-      {(ticket.resolution_summary || ticket.resolution_category || ticket.root_cause) && (
+      {(ticket.resolution_summary ||
+        ticket.resolution_category ||
+        ticket.root_cause) && (
         <div className="detail-section">
           <h3>Resolution</h3>
           <p>{ticket.resolution_summary || "No resolution summary."}</p>
@@ -993,21 +1086,44 @@ const TicketDetailPage = ({
           </div>
           {isEndUser && ["Resolved", "Closed"].includes(ticket.status) && (
             <div style={{ marginTop: "16px" }}>
-              {(ticket.user_confirmed_resolution && ticket.status === "Resolved") || manuallyConfirmed ? (
-                <div className="muted" style={{ padding: "12px", backgroundColor: "#e8f5e9", borderRadius: "4px" }}>
+              {(ticket.user_confirmed_resolution &&
+                ticket.status === "Resolved") ||
+              manuallyConfirmed ? (
+                <div
+                  className="muted"
+                  style={{
+                    padding: "12px",
+                    backgroundColor: "#e8f5e9",
+                    borderRadius: "4px",
+                  }}
+                >
                   ✓ You have confirmed this resolution on{" "}
                   {ticket.user_confirmed_at
                     ? new Date(ticket.user_confirmed_at).toLocaleString()
                     : "N/A"}
                 </div>
               ) : (
-                <div style={{ padding: "12px", backgroundColor: "rgba(10, 22, 53, 0.7)", border: `1px solid ${ticket.status === "Closed" ? "rgba(255, 93, 108, 0.3)" : "rgba(255, 181, 71, 0.3)"}`, borderRadius: "4px", marginBottom: "12px" }}>
+                <div
+                  style={{
+                    padding: "12px",
+                    backgroundColor: "rgba(10, 22, 53, 0.7)",
+                    border: `1px solid ${ticket.status === "Closed" ? "rgba(255, 93, 108, 0.3)" : "rgba(255, 181, 71, 0.3)"}`,
+                    borderRadius: "4px",
+                    marginBottom: "12px",
+                  }}
+                >
                   <p style={{ margin: "0 0 12px 0", fontWeight: "bold" }}>
                     {ticket.status === "Closed"
                       ? "This ticket was closed. You can confirm the resolution or reopen it if the issue persists:"
                       : "Please confirm if the issue has been resolved:"}
                   </p>
-                  <div style={{ display: "flex", gap: "8px", marginBottom: "12px" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: "8px",
+                      marginBottom: "12px",
+                    }}
+                  >
                     <button
                       className="btn primary"
                       onClick={async () => {
@@ -1015,20 +1131,27 @@ const TicketDetailPage = ({
                         setError("");
                         setNotice("");
                         try {
-                          const response = await apiClient.post(`/tickets/${ticketId}/confirm-resolution`);
-                          if (response.data?.status === 'success') {
+                          const response = await apiClient.post(
+                            `/tickets/${ticketId}/confirm-resolution`,
+                          );
+                          if (response.data?.status === "success") {
                             setNotice("Resolution confirmed. Thank you!");
                             setManuallyConfirmed(true);
                             // Refresh ticket data
-                            const ticketRes = await apiClient.get(`/tickets/${ticketId}`);
+                            const ticketRes = await apiClient.get(
+                              `/tickets/${ticketId}`,
+                            );
                             const updatedTicket = ticketRes.data.data.ticket;
                             setTicket(updatedTicket);
                             setStatus(updatedTicket?.status || "");
                             if (onUpdated) onUpdated();
                           }
                         } catch (err) {
-                          console.error('Confirm resolution error:', err);
-                          const errorMsg = err.response?.data?.message || err.message || "Failed to confirm resolution";
+                          console.error("Confirm resolution error:", err);
+                          const errorMsg =
+                            err.response?.data?.message ||
+                            err.message ||
+                            "Failed to confirm resolution";
                           setError(errorMsg);
                         } finally {
                           setSaving(false);
@@ -1049,32 +1172,45 @@ const TicketDetailPage = ({
                         setError("");
                         setNotice("");
                         try {
-                          const response = await apiClient.post(`/tickets/${ticketId}/reopen`, {
-                            reason: reopenReason.trim(),
-                          });
-                          if (response.data?.status === 'success') {
+                          const response = await apiClient.post(
+                            `/tickets/${ticketId}/reopen`,
+                            {
+                              reason: reopenReason.trim(),
+                            },
+                          );
+                          if (response.data?.status === "success") {
                             setNotice("Ticket reopened successfully");
                             setReopenReason("");
                             // Refresh ticket data
-                            const ticketRes = await apiClient.get(`/tickets/${ticketId}`);
+                            const ticketRes = await apiClient.get(
+                              `/tickets/${ticketId}`,
+                            );
                             const updatedTicket = ticketRes.data.data.ticket;
                             setTicket(updatedTicket);
                             setStatus(updatedTicket?.status || "");
                             setPriority(updatedTicket?.priority || "");
                             setAssignedTo(updatedTicket?.assigned_to || "");
                             try {
-                              const commentsRes = await apiClient.get(`/tickets/${ticketId}/comments`);
+                              const commentsRes = await apiClient.get(
+                                `/tickets/${ticketId}/comments`,
+                              );
                               if (commentsRes.data?.data?.comments) {
                                 setComments(commentsRes.data.data.comments);
                               }
                             } catch (commentsErr) {
-                              console.warn('Could not refresh comments separately:', commentsErr);
+                              console.warn(
+                                "Could not refresh comments separately:",
+                                commentsErr,
+                              );
                             }
                             if (onUpdated) onUpdated();
                           }
                         } catch (err) {
-                          console.error('Reopen ticket error:', err);
-                          const errorMsg = err.response?.data?.message || err.message || "Failed to reopen ticket";
+                          console.error("Reopen ticket error:", err);
+                          const errorMsg =
+                            err.response?.data?.message ||
+                            err.message ||
+                            "Failed to reopen ticket";
                           setError(errorMsg);
                         } finally {
                           setSaving(false);
@@ -1096,7 +1232,10 @@ const TicketDetailPage = ({
                       />
                     </label>
                   </div>
-                  <p className="muted" style={{ marginTop: "8px", fontSize: "12px" }}>
+                  <p
+                    className="muted"
+                    style={{ marginTop: "8px", fontSize: "12px" }}
+                  >
                     {ticket.status === "Closed"
                       ? "If the issue persists, reopen the ticket and it will be reassigned."
                       : "If you don't respond within 2 days, this ticket will be automatically closed."}
@@ -1187,35 +1326,73 @@ const TicketDetailPage = ({
         </div>
       </div>
 
-      <div className="detail-section" style={{
-        backgroundColor: "rgba(26, 58, 92, 0.4)",
-        borderRadius: "8px",
-        padding: "20px",
-        marginBottom: "20px",
-        border: "1px solid rgba(42, 74, 106, 0.3)"
-      }}>
-        <h3 style={{ margin: "0 0 16px 0", fontSize: "18px", fontWeight: "600", color: "#e0e0e0" }}>
+      <div
+        className="detail-section"
+        style={{
+          backgroundColor: "rgba(26, 58, 92, 0.4)",
+          borderRadius: "8px",
+          padding: "20px",
+          marginBottom: "20px",
+          border: "1px solid rgba(42, 74, 106, 0.3)",
+        }}
+      >
+        <h3
+          style={{
+            margin: "0 0 16px 0",
+            fontSize: "18px",
+            fontWeight: "600",
+            color: "#e0e0e0",
+          }}
+        >
           Escalations
         </h3>
         {escalationNotice && (
-          <div className="panel success" style={{ marginBottom: "16px", padding: "12px" }}>
+          <div
+            className="panel success"
+            style={{ marginBottom: "16px", padding: "12px" }}
+          >
             {escalationNotice}
           </div>
         )}
         <div style={{ marginBottom: "20px" }}>
           {escalations.length === 0 && (
-            <p className="muted" style={{ textAlign: "center", padding: "20px", color: "#a0a0a0" }}>
+            <p
+              className="muted"
+              style={{ textAlign: "center", padding: "20px", color: "#a0a0a0" }}
+            >
               No escalations logged.
             </p>
           )}
           {escalations.map((entry) => {
             const severityColors = {
-              critical: { bg: "rgba(58, 26, 26, 0.6)", border: "rgba(90, 42, 42, 0.5)", text: "#ff6b6b", badge: "#ff4444" },
-              high: { bg: "rgba(58, 42, 26, 0.6)", border: "rgba(90, 74, 42, 0.5)", text: "#ffa500", badge: "#ff8800" },
-              medium: { bg: "rgba(42, 42, 58, 0.6)", border: "rgba(58, 58, 90, 0.5)", text: "#60a5fa", badge: "#3b82f6" },
-              low: { bg: "rgba(26, 58, 42, 0.6)", border: "rgba(42, 90, 58, 0.5)", text: "#4ade80", badge: "#22c55e" },
+              critical: {
+                bg: "rgba(58, 26, 26, 0.6)",
+                border: "rgba(90, 42, 42, 0.5)",
+                text: "#ff6b6b",
+                badge: "#ff4444",
+              },
+              high: {
+                bg: "rgba(58, 42, 26, 0.6)",
+                border: "rgba(90, 74, 42, 0.5)",
+                text: "#ffa500",
+                badge: "#ff8800",
+              },
+              medium: {
+                bg: "rgba(42, 42, 58, 0.6)",
+                border: "rgba(58, 58, 90, 0.5)",
+                text: "#60a5fa",
+                badge: "#3b82f6",
+              },
+              low: {
+                bg: "rgba(26, 58, 42, 0.6)",
+                border: "rgba(42, 90, 58, 0.5)",
+                text: "#4ade80",
+                badge: "#22c55e",
+              },
             };
-            const colors = severityColors[entry.severity?.toLowerCase()] || severityColors.medium;
+            const colors =
+              severityColors[entry.severity?.toLowerCase()] ||
+              severityColors.medium;
             return (
               <div
                 key={entry.escalation_id}
@@ -1224,36 +1401,42 @@ const TicketDetailPage = ({
                   border: `1px solid ${colors.border}`,
                   borderRadius: "8px",
                   padding: "16px",
-                  marginBottom: "12px"
+                  marginBottom: "12px",
                 }}
               >
-                <div style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: "8px"
-                }}>
-                  <span style={{
-                    padding: "4px 10px",
-                    backgroundColor: colors.badge,
-                    borderRadius: "4px",
-                    color: "#ffffff",
-                    fontSize: "12px",
-                    fontWeight: "600",
-                    textTransform: "uppercase"
-                  }}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginBottom: "8px",
+                  }}
+                >
+                  <span
+                    style={{
+                      padding: "4px 10px",
+                      backgroundColor: colors.badge,
+                      borderRadius: "4px",
+                      color: "#ffffff",
+                      fontSize: "12px",
+                      fontWeight: "600",
+                      textTransform: "uppercase",
+                    }}
+                  >
                     {entry.severity}
                   </span>
                   <span style={{ fontSize: "12px", color: "#a0a0a0" }}>
                     {new Date(entry.escalated_at).toLocaleString()}
                   </span>
                 </div>
-                <p style={{
-                  margin: "0",
-                  color: "#e0e0e0",
-                  fontSize: "14px",
-                  lineHeight: "1.5"
-                }}>
+                <p
+                  style={{
+                    margin: "0",
+                    color: "#e0e0e0",
+                    fontSize: "14px",
+                    lineHeight: "1.5",
+                  }}
+                >
                   {entry.reason}
                 </p>
               </div>
@@ -1261,12 +1444,14 @@ const TicketDetailPage = ({
           })}
         </div>
         {canEscalate && (
-          <div style={{
-            paddingTop: "20px",
-            borderTop: "1px solid rgba(42, 74, 106, 0.3)",
-            display: "grid",
-            gap: "16px"
-          }}>
+          <div
+            style={{
+              paddingTop: "20px",
+              borderTop: "1px solid rgba(42, 74, 106, 0.3)",
+              display: "grid",
+              gap: "16px",
+            }}
+          >
             <label className="field">
               <span>Severity</span>
               <select
@@ -1278,13 +1463,21 @@ const TicketDetailPage = ({
                   border: "1px solid rgba(58, 90, 122, 0.4)",
                   borderRadius: "6px",
                   color: "#e0e0e0",
-                  fontSize: "14px"
+                  fontSize: "14px",
                 }}
               >
-                <option value="low" style={{ backgroundColor: "#0a1a2a" }}>Low</option>
-                <option value="medium" style={{ backgroundColor: "#0a1a2a" }}>Medium</option>
-                <option value="high" style={{ backgroundColor: "#0a1a2a" }}>High</option>
-                <option value="critical" style={{ backgroundColor: "#0a1a2a" }}>Critical</option>
+                <option value="low" style={{ backgroundColor: "#0a1a2a" }}>
+                  Low
+                </option>
+                <option value="medium" style={{ backgroundColor: "#0a1a2a" }}>
+                  Medium
+                </option>
+                <option value="high" style={{ backgroundColor: "#0a1a2a" }}>
+                  High
+                </option>
+                <option value="critical" style={{ backgroundColor: "#0a1a2a" }}>
+                  Critical
+                </option>
               </select>
             </label>
             <label className="field">
@@ -1302,7 +1495,7 @@ const TicketDetailPage = ({
                   color: "#e0e0e0",
                   fontSize: "14px",
                   fontFamily: "inherit",
-                  resize: "vertical"
+                  resize: "vertical",
                 }}
               />
             </label>
@@ -1343,6 +1536,36 @@ const TicketDetailPage = ({
               <span>{uploadProgress}</span>
             </div>
           )}
+          {/* Attach files above comment textarea (staff only) */}
+          {["it_agent", "it_manager", "system_admin"].includes(user?.role) && (
+            <div
+              style={{
+                marginBottom: "8px",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+              }}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                style={{ display: "none" }}
+                onChange={(e) => handleAttachFiles(e.target.files)}
+                disabled={saving}
+              />
+              <button
+                className="btn secondary"
+                type="button"
+                onClick={() =>
+                  fileInputRef.current && fileInputRef.current.click()
+                }
+                disabled={saving}
+              >
+                Attach
+              </button>
+            </div>
+          )}
           <textarea
             rows={3}
             value={commentText}
@@ -1367,9 +1590,7 @@ const TicketDetailPage = ({
             </label>
           )}
           {!canComment && !isEndUser && (
-            <p className="muted">
-              This ticket is assigned to someone else.
-            </p>
+            <p className="muted">This ticket is assigned to someone else.</p>
           )}
           <button
             className="btn primary"
