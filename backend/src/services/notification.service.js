@@ -36,33 +36,6 @@ function getTicketUrl(ticketId) {
   return `${baseUrl.replace(/\/$/, '')}/tickets?id=${ticketId}`;
 }
 
-function getTransporter() {
-  if (transporter) return transporter;
-
-  const {
-    SMTP_HOST,
-    SMTP_PORT,
-    SMTP_USER,
-    SMTP_PASSWORD,
-  } = process.env;
-
-  if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASSWORD) {
-    return null;
-  }
-
-  transporter = nodemailer.createTransport({
-    host: SMTP_HOST,
-    port: Number(SMTP_PORT),
-    secure: Number(SMTP_PORT) === 465,
-    auth: {
-      user: SMTP_USER,
-      pass: SMTP_PASSWORD,
-    },
-  });
-
-  return transporter;
-}
-
 async function sendEmail({ to, subject, text, templateParams = {} }) {
   if (!isEmailEnabled()) {
     logger.info('Email notifications disabled. Skipping email.', { subject, to });
@@ -126,13 +99,33 @@ async function sendEmail({ to, subject, text, templateParams = {} }) {
     }
   }
 
-  const mailer = getTransporter();
-  if (!mailer) {
-    logger.warn('SMTP not configured. Skipping email.', { subject, to });
+  // Brevo (Sendinblue) API integration
+  const SibApiV3Sdk = require('sib-api-v3-sdk');
+  const brevoApiKey = process.env.BREVO_API_KEY;
+  if (!brevoApiKey) {
+    logger.warn('Brevo API key not configured. Skipping email.', { subject, to });
     return false;
   }
 
-  logger.info('Sending SMTP email', { to: finalTo, subject });
+  const client = SibApiV3Sdk.ApiClient.instance;
+  const apiKey = client.authentications['api-key'];
+  apiKey.apiKey = brevoApiKey;
+  const emailApi = new SibApiV3Sdk.TransactionalEmailsApi();
+
+  const sender = {
+    name: process.env.SMTP_FROM_NAME || 'Madison88 ITSM Support',
+    email: process.env.SMTP_FROM_EMAIL || 'itsmmadison@gmail.com',
+  };
+
+  const sendSmtpEmail = {
+    sender,
+    to: Array.isArray(to) ? to.map(email => ({ email })) : [{ email: to }],
+    subject,
+    textContent: text,
+    // Optionally add HTML content or templateParams
+    // htmlContent: html,
+    // params: templateParams,
+  };
 
   // Audit log for sent email
   try {
@@ -145,24 +138,23 @@ async function sendEmail({ to, subject, text, templateParams = {} }) {
         'notification',
         null,
         null,
-        JSON.stringify({ to: finalTo, subject, text }),
-        `Email sent to ${finalTo} with subject '${subject}'`,
+        JSON.stringify({ to, subject, text }),
+        `Email sent to ${to} with subject '${subject}'`,
         null,
-        'mailer',
+        'brevo',
         null,
       ]
     );
   } catch (auditErr) {
     logger.error('Failed to log email audit', { error: auditErr.message });
   }
-  const from = process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER;
 
   try {
-    const info = await mailer.sendMail({ from, to: finalTo, subject, text });
-    logger.info('SMTP email sent successfully', { messageId: info.messageId, to: finalTo });
+    const result = await emailApi.sendTransacEmail(sendSmtpEmail);
+    logger.info('Brevo email sent successfully', { messageId: result.messageId, to });
     return true;
   } catch (err) {
-    logger.error('Failed to send email via SMTP', { error: err.message, to: finalTo, subject });
+    logger.error('Failed to send email via Brevo', { error: err.message, to, subject });
     return false;
   }
 }
