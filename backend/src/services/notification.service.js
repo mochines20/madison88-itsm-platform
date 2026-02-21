@@ -1,34 +1,12 @@
-const axios = require('axios');
-const nodemailer = require('nodemailer');
+const SibApiV3Sdk = require('sib-api-v3-sdk');
 const db = require('../config/database');
 const logger = require('../utils/logger');
 
-let transporter = null;
 
 function isEmailEnabled() {
   const flag = process.env.ENABLE_EMAIL_NOTIFICATIONS;
   if (!flag) return true;
   return flag.toLowerCase() === 'true' || flag === '1';
-}
-
-function getEmailJsConfig() {
-  const {
-    EMAILJS_SERVICE_ID,
-    EMAILJS_TEMPLATE_ID,
-    EMAILJS_PUBLIC_KEY,
-    EMAILJS_PRIVATE_KEY,
-  } = process.env;
-
-  if (!EMAILJS_SERVICE_ID || !EMAILJS_TEMPLATE_ID || !EMAILJS_PUBLIC_KEY) {
-    return null;
-  }
-
-  return {
-    serviceId: EMAILJS_SERVICE_ID,
-    templateId: EMAILJS_TEMPLATE_ID,
-    publicKey: EMAILJS_PUBLIC_KEY,
-    privateKey: EMAILJS_PRIVATE_KEY,
-  };
 }
 
 function getTicketUrl(ticketId) {
@@ -49,58 +27,7 @@ async function sendEmail({ to, subject, text, templateParams = {} }) {
     logger.info('Email override active', { originalTo: to, finalTo });
   }
 
-  const emailJsConfig = getEmailJsConfig();
-  if (emailJsConfig) {
-    if (!finalTo || !finalTo.trim()) {
-      logger.error('EmailJS recipient is empty. Skipping send.', { subject });
-      return false;
-    }
-
-    logger.info('Sending EmailJS email', {
-      to: finalTo,
-      subject,
-      serviceId: emailJsConfig.serviceId,
-      templateId: emailJsConfig.templateId,
-    });
-
-    const payload = {
-      service_id: emailJsConfig.serviceId,
-      template_id: emailJsConfig.templateId,
-      template_params: {
-        to_email: finalTo,
-        email: finalTo,
-        subject,
-        message: text,
-        app_name: process.env.APP_NAME || 'Madison88 ITSM',
-        ...templateParams,
-      },
-    };
-
-    payload.user_id = emailJsConfig.publicKey;
-    if (emailJsConfig.privateKey) {
-      payload.access_token = emailJsConfig.privateKey;
-    }
-
-    try {
-      await axios.post('https://api.emailjs.com/api/v1.0/email/send', payload, {
-        headers: { 'Content-Type': 'application/json' },
-      });
-      logger.info('EmailJS send successful', { to: finalTo, subject });
-      return true;
-    } catch (err) {
-      logger.error('Failed to send EmailJS email', {
-        error: err.message,
-        status: err.response?.status,
-        data: err.response?.data,
-        to: finalTo,
-        subject,
-      });
-      return false;
-    }
-  }
-
-  // Brevo (Sendinblue) API integration
-  const SibApiV3Sdk = require('sib-api-v3-sdk');
+  // Brevo (Sendinblue) API integration ONLY
   const brevoApiKey = process.env.BREVO_API_KEY;
   if (!brevoApiKey) {
     logger.warn('Brevo API key not configured. Skipping email.', { subject, to });
@@ -119,7 +46,7 @@ async function sendEmail({ to, subject, text, templateParams = {} }) {
 
   const sendSmtpEmail = {
     sender,
-    to: Array.isArray(to) ? to.map(email => ({ email })) : [{ email: to }],
+    to: Array.isArray(finalTo) ? finalTo.map(email => ({ email })) : [{ email: finalTo }],
     subject,
     textContent: text,
     // Optionally add HTML content or templateParams
@@ -138,8 +65,8 @@ async function sendEmail({ to, subject, text, templateParams = {} }) {
         'notification',
         null,
         null,
-        JSON.stringify({ to, subject, text }),
-        `Email sent to ${to} with subject '${subject}'`,
+        JSON.stringify({ to: finalTo, subject, text }),
+        `Email sent to ${finalTo} with subject '${subject}'`,
         null,
         'brevo',
         null,
@@ -151,10 +78,10 @@ async function sendEmail({ to, subject, text, templateParams = {} }) {
 
   try {
     const result = await emailApi.sendTransacEmail(sendSmtpEmail);
-    logger.info('Brevo email sent successfully', { messageId: result.messageId, to });
+    logger.info('Brevo email sent successfully', { messageId: result.messageId, to: finalTo });
     return true;
   } catch (err) {
-    logger.error('Failed to send email via Brevo', { error: err.message, to, subject });
+    logger.error('Failed to send email via Brevo', { error: err.message, to: finalTo, subject });
     return false;
   }
 }
